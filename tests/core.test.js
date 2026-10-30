@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { collect, compare, dashboardState, extract, readRuns, readDecisions, sendNotifications } from '../src/core.js';
+import { collect, compare, dashboardState, extract, readRuns, readDecisions, readDocuments, readConfig, sendNotifications } from '../src/core.js';
 
 test('factual alerts require a newer comparable observation and are deduplicated', () => {
   const source = { id: 'test-source', metrics: [{ id: 'breadth', alertAbsolute: 5 }] };
@@ -17,6 +17,66 @@ test('factual alerts require a newer comparable observation and are deduplicated
   assert.equal(compare(current, prior, source, new Set([alerts[0].id])).length, 0);
   assert.equal(compare([{ ...current[0], asOf: prior[0].asOf }], prior, source).length, 0);
   assert.equal(compare([{ ...current[0], unit: 'USD' }], prior, source).length, 0);
+  assert.equal(compare([{ ...current[0], assetId: 'asset-b' }], [{ ...prior[0], assetId: 'asset-a' }], source).length, 0);
+});
+
+test('asset metrics stay separate from market breadth and private metadata is allowlisted', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'market-desk-assets-'));
+  try {
+    const runId = '2026-01-02T00-00-00-000Z-abc';
+    const runDir = path.join(root, 'runs', runId);
+    await fs.mkdir(runDir, { recursive: true });
+    const at = '2026-01-02T00:00:00Z';
+    const run = { schemaVersion: 1, runId, startedAt: at, finishedAt: at,
+      assets: [{ id: 'example-us', market: 'us', symbol: 'EXM', name: 'Example', exchange: 'Example venue' }],
+      sources: [
+        { id: 'market', market: 'us', status: 'ok', definition: { metrics: [{ id: 'breadth', assetId: null }] } },
+        { id: 'quote', market: 'us', status: 'ok', definition: { metrics: [{ id: 'price', assetId: 'example-us', role: 'price' }] } }
+      ],
+      observations: [
+        { market: 'us', sourceId: 'market', metricId: 'breadth', assetId: null, value: 40, unit: '%', quality: 'valid', asOf: at },
+        { market: 'us', sourceId: 'quote', metricId: 'price', assetId: 'example-us', role: 'price', value: 12, unit: 'USD', quality: 'valid', asOf: at }
+      ], alerts: [] };
+    await fs.writeFile(path.join(runDir, 'run.json'), JSON.stringify(run));
+    await fs.writeFile(path.join(root, 'documents.jsonl'),
+      JSON.stringify({ id: 'doc-one', assetId: 'example-us', kind: 'filing', title: 'Example filing', asOf: at, sourceId: 'public-registry', sourceUrl: 'https://example.com/file', privateNote: 'hidden' }) + '\n' +
+      JSON.stringify({ id: 'doc-two', assetId: 'example-us', kind: 'research', title: 'Invalid signed URL', asOf: at, sourceId: 'private', sourceUrl: 'https://example.com/file?token=hidden' }) + '\n');
+    const state = await dashboardState(root);
+    assert.equal(state.markets.us.observations.length, 1);
+    assert.equal(state.markets.us.observations[0].metricId, 'breadth');
+    assert.equal(state.assets[0].observations.length, 1);
+    assert.equal(state.assets[0].observations[0].metricId, 'price');
+    assert.equal(state.documents.length, 1);
+    assert.equal(state.documentError, true);
+    assert.ok(!JSON.stringify(state.documents).includes('hidden'));
+    assert.equal((await readDocuments(root)).items[0].sourceUrl, 'https://example.com/file');
+    run.observations = run.observations.filter(item => item.assetId);
+    await fs.writeFile(path.join(runDir, 'run.json'), JSON.stringify(run));
+    const assetOnly = await dashboardState(root);
+    assert.equal(assetOnly.markets.us.status, 'missing');
+    assert.equal(assetOnly.markets.us.observation, null);
+    assert.equal(assetOnly.assets[0].status, 'ok');
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('configured asset metrics must point to a registered asset in the same market', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'market-desk-asset-config-'));
+  const previous = process.env.CONFIG_PATH;
+  try {
+    const file = path.join(root, 'config.json');
+    const config = { version: 1, assets: [{ id: 'example-us', market: 'us', symbol: 'EXM', name: 'Example' }],
+      sources: [{ id: 'quote', market: 'us', kind: 'command', command: 'example.mjs', maxAgeMinutes: 1440,
+        metrics: [{ id: 'price', path: 'price', unit: 'USD', assetId: 'example-us', role: 'price' }] }] };
+    process.env.CONFIG_PATH = file;
+    await fs.writeFile(file, JSON.stringify(config));
+    assert.equal((await readConfig()).assets.length, 1);
+    config.sources[0].market = 'crypto';
+    await fs.writeFile(file, JSON.stringify(config));
+    await assert.rejects(readConfig(), /Invalid asset/);
+  } finally {
+    if (previous === undefined) delete process.env.CONFIG_PATH; else process.env.CONFIG_PATH = previous;
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test('missing fields do not become zero observations', () => {

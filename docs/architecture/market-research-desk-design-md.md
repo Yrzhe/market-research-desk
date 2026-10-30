@@ -10,17 +10,19 @@ Surface: app screen. The overview answers: **What changed since the last valid o
 
 - Markets: A shares, Hong Kong, US, and crypto, each with its own observation timestamp and time zone.
 - A monitor reports numeric observations with unit, source URL, as-of time and capture time.
+- An optional asset registry gives a market, stable ID, symbol, name and venue. A metric may link to one asset; market-wide metrics remain separate.
 - A rule compares a current observation with the preceding compatible one and emits a factual alert.
 - An alert has a stable ID, severity, status, calculation, and a link to its immutable run.
 - A run has an ID, trigger, start and end time, per-source outcomes, and data quality.
 - Decisions are research artifacts added by a separate private process; the monitor does not infer buy or sell actions.
+- A private document index links report, filing, financial statement and call metadata to an asset by ID; the app does not serve report contents.
 - A new installation typically has zero observations, zero alerts and four unconnected markets.
 - The daily reader uses desktop for comparison and a phone for alerts and status.
 - The product's own object is an evidence trail: observation → comparison → alert → research decision.
 
 ## Direction and reference lock
 
-The first pass used taste-skill `achromatic-ledger`, seed `1152222347`. Its screenshot was still a generic light admin: separate white panels gave the market data, evidence and operations equal visual weight. The second pass uses the `framed-sheet` app direction, seed `519901950`, while keeping the factual scope and five destinations. A neutral rail frames one work sheet. The four-market tape stays quiet; the current investigation is the one dark, high-contrast data surface. This gives the screen a clear place to start without decorative imagery or invented market data.
+The first pass used taste-skill `achromatic-ledger`, seed `1152222347`. Its screenshot was still a generic light admin: separate white panels gave the market data, evidence and operations equal visual weight. The second pass uses the `framed-sheet` app direction, seed `519901950`, while keeping the factual scope. A neutral rail frames one work sheet. The four-market tape stays quiet; the current investigation is the one dark, high-contrast data surface. This gives the screen a clear place to start without decorative imagery or invented market data. The asset directory adds a sixth destination using the same frame and typography.
 
 ### Reference study, 2026-10-30
 
@@ -31,7 +33,7 @@ The first pass used taste-skill `achromatic-ledger`, seed `1152222347`. Its scre
 | [Peec AI overview](https://mobbin.com/screens/bd140b6c-33cf-431f-a25e-52d58bc84a91) | Neutral fixed navigation, thin dividers, paired chart/list blocks and consistent content edges | A compact side rail anchors desktop, with aligned content and flat panels. |
 | [Monarch investments](https://mobbin.com/screens/da024799-2d02-43de-9475-d5e313c2b990) | Selected time period and selected metric are visibly related to the chart | A selected primary alert is visually tied to its own archived trend, without inventing a time range control. |
 
-The references are craft sources, not data sources. The code keeps the product's existing public data contract, so no reference-specific figures, market labels, customer marks or inferred trading signals are imported.
+The references are craft sources, not data sources. The public data contract extends only for asset identifiers, sampled asset metrics, and document metadata; no reference-specific figures, customer marks or inferred trading signals are imported.
 
 The studied screenshots and specific takeaways are together on the [Paper reference board](https://app.paper.design/file/01M65RBRHHPCBATBN9YE47PT12/p-1-0). The original baseline is in `docs/screenshots/baseline/`; the first-pass design that prompted this second revision is in `docs/design/baseline/2026-10-30-second-pass/`. Current light and dark captures are in `docs/screenshots/`.
 
@@ -45,6 +47,8 @@ The evidence panel joins the current comparison, its time series, and the change
 
 - The desktop shell is a flat navigation rail with a simple wordmark. Phone navigation becomes a scrollable strip. Every destination keeps its existing URL hash.
 - Coverage is one four-column strip, not four isolated cards. Each cell has market, explicit source state, primary measurement, unit, metric name and observed time. Failed or unconfigured cells do not reuse a stale figure.
+- The asset directory is a searchable list with market filter, symbol/name, last valid quote, source/time and explicit state. A market evidence drawer links to the assets registered for that market.
+- An asset detail uses the existing dark evidence field for its current quote and same-source archived trend. Its neutral rail shows identity, observation time and source state; lower sections show current metrics, alerts, research decisions and document metadata. Empty sections say what has yet to be connected.
 - The alert workspace pairs the most recent comparable trend with the alert queue. A line carries an actual y-scale and observation time labels. The row and chart open the same evidence drawer; no hidden trading conclusion is implied.
 - The run-health list and due-review list share the operations rail next to the investigation. Their item counts and spacing reflect the actual data.
 - Tables use right-aligned tabular figures, a distinct column header and row hover. Source status stays in a separate operations pane. Empty, stale and failed states retain their own copy.
@@ -56,6 +60,8 @@ No off-the-shelf React dashboard block was installed: this repository is a small
 ## Screens and interactions
 
 - Overview: current run/time, coverage rail, top factual alerts, four-market matrix, recent observations and run health.
+- Assets: searchable directory and a page per configured asset. The page shows only valid sampled readings; stale observations never masquerade as a current quote. Alerts and imported decisions link back by stable `assetId`.
+- Asset material: private `documents.jsonl` metadata covers research, filings, earnings and calls. A stable HTTPS source link is shown when supplied; OCR, PDF hosting and uploads are not part of this read-only build.
 - Alerts: filter by market and severity; open an alert to read old and new values, unit, timestamps, source and formula.
 - Runs: list immutable runs and source failures; open each run's observations.
 - Decisions: read private imported judgments, show the original scope and counterevidence, and surface reviews due by date. The monitor never writes this file.
@@ -66,6 +72,6 @@ Top navigation changes the visible section without changing data. Filters reduce
 
 ## Data and trust rules
 
-No default sample numbers are presented as live market facts. Empty installation shows four unconnected markets. Optional fixture data is marked as a sample everywhere. Missing values are em dashes, never zero. A failed source cannot trigger a market alert from stale data. Market times are displayed per source. Data obtained from third parties must be used according to their terms; the repository contains only adapter code and a synthetic example.
+No default sample numbers are presented as live market facts. Empty installation shows four unconnected markets and no assets. Optional fixture data is marked as a sample everywhere. Missing values are em dashes, never zero. A failed source cannot trigger an asset or market alert from stale data. Market-wide metrics exclude asset-specific observations. The quote trend compares only the same asset, source, metric and unit. Times and source IDs remain visible with each reading. Data obtained from third parties must be used according to their terms; the repository contains only adapter code and a synthetic example.
 
 The browser binds by default to `127.0.0.1`. Public access requires an operator-configured authentication layer such as Cloudflare Access. No browser endpoint executes scripts or edits configuration.
