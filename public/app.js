@@ -32,7 +32,7 @@ function signed(value, unit = '') {
   return `${value > 0 ? '+' : ''}${number(value, unit)}`;
 }
 function escAttr(value) { return escapeHtml(value); }
-function nav() { return ['overview', 'alerts', 'runs', 'about'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; }
+function nav() { return ['overview', 'alerts', 'decisions', 'runs', 'about'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; }
 function pageHead(title, subtitle) {
   return `<header class="page-head"><div><p class="eyebrow">四市场研究工作台 ${new URLSearchParams(location.search).has('sample') ? '<span class="sample-flag">合成示例数据</span>' : ''}</p><h1 class="page-title">${title}</h1><p class="page-subtitle">${subtitle}</p></div><div class="head-meta">看板读取时间<strong>${fullTime(state.generatedAt)}</strong></div></header>`;
 }
@@ -61,6 +61,9 @@ function overview() {
   const contextPoints = primaryAlert ? state.runs.map(r => r.observations?.find(o => o.sourceId === primaryAlert.sourceId && o.metricId === primaryAlert.metricId)).filter(Boolean).reverse() : [];
   const alertContext = contextPoints.length >= 2 ? `<div class="trend-snippet"><div class="trend-caption"><strong>${escapeHtml(primaryAlert.label)} · 最近 ${contextPoints.length} 次观察</strong><span>变化的量级，点击提醒查看公式</span></div>${trendSvg(contextPoints)}</div>` : '';
   const sourceRows = state.latest?.sources?.map(s => `<div class="health-item"><span class="source-name">${names[s.market] || escapeHtml(s.market)} <span class="row-sub">${escapeHtml(s.id)}</span></span><span class="source-state ${escAttr(s.status)}">${statusNames[s.status] || escapeHtml(s.status)}</span></div>`).join('') || '';
+  const due = (state.decisions || []).filter(d => d.reviewAt && !d.verifiedAt && Date.parse(d.reviewAt) <= Date.parse(state.generatedAt));
+  const dueRows = due.slice(0, 3).map(d => `<li><button class="data-row" type="button" data-decision="${escAttr(d.id)}"><span><span class="row-title">${escapeHtml(d.asset)}</span><span class="row-sub">${names[d.market]} · ${escapeHtml(d.verdict)} · 到期复核</span></span><span class="row-right"><span class="row-date">${dateTime(d.reviewAt)}</span></span></button></li>`).join('');
+  const dueSection = due.length ? `<section class="due-section">${sectionHead('到期复盘', `${due.length} 条旧判断需要用新事实核对`, '<a class="section-link" href="#decisions">判断台账</a>')}<div class="panel"><ul class="row-list">${dueRows}</ul></div></section>` : '';
   const matrix = marketEntries.map(([id, data]) => {
     const o = data.observations[0];
     return `<tr><td class="market-name">${names[id]}</td><td class="muted">${o ? escapeHtml(o.label) : statusNames[data.status] || '无数据'}</td><td class="number">${o ? number(o.value, o.unit) : '—'}</td><td class="muted">${o ? dateTime(o.asOf) : '—'}</td><td class="view-cell"><button class="text-button" type="button" data-market="${escAttr(id)}">查看证据</button></td></tr>`;
@@ -69,7 +72,19 @@ function overview() {
     `<section class="panel coverage-panel" aria-label="四市场覆盖"><div class="coverage-intro"><strong>本轮有效覆盖</strong><span class="coverage-count">${covered} / 4 个市场</span></div><div class="coverage-grid">${rail}</div></section>` +
     `<div class="work-grid"><section>${sectionHead('需要核验', '达到配置阈值的事实变化，尚不是投资结论', '<a class="section-link" href="#alerts">查看全部</a>')}<div class="panel">${alerts.length ? `<ul class="row-list">${alertRows}</ul>${alertContext}` : empty('没有待核验提醒', '运行监控后，命中阈值且有可比历史值的变化会出现在这里。')}</div></section>` +
     `<section>${sectionHead('自动运行', '最近一次监控的来源状态', '<a class="section-link" href="#runs">运行档案</a>')}<div class="panel">${sourceRows ? `<div class="panel-head"><span class="section-title">${dateTime(state.latest.startedAt)} · 运行 ${escapeHtml(state.latest.runId.slice(-6))}</span></div><div class="health-list">${sourceRows}</div>` : empty('等待首次运行', '用配置文件接入来源，并在服务器执行监控命令。')}</div></section></div>` +
-    `<section>${sectionHead('市场截面', '数值、单位与观察时间来自最近一轮有效记录')}<div class="panel matrix-panel"><div class="table-wrap"><table class="matrix"><thead><tr><th>市场</th><th>观察指标</th><th>最新值</th><th>观察时间</th><th></th></tr></thead><tbody>${matrix}</tbody></table></div></div><div class="below-note"><span><i class="line-mark"></i> 有效覆盖</span><span>失效来源不沿用旧值触发提醒</span><span>点击市场查看历史与来源</span></div></section>`;
+    `${dueSection}<section>${sectionHead('市场截面', '数值、单位与观察时间来自最近一轮有效记录')}<div class="panel matrix-panel"><div class="table-wrap"><table class="matrix"><thead><tr><th>市场</th><th>观察指标</th><th>最新值</th><th>观察时间</th><th></th></tr></thead><tbody>${matrix}</tbody></table></div></div><div class="below-note"><span><i class="line-mark"></i> 有效覆盖</span><span>失效来源不沿用旧值触发提醒</span><span>点击市场查看历史与来源</span></div></section>`;
+}
+
+function decisionsPage() {
+  const items = state.decisions || [];
+  const due = items.filter(d => d.reviewAt && !d.verifiedAt && Date.parse(d.reviewAt) <= Date.parse(state.generatedAt));
+  const selected = due[0] || items[0];
+  const rows = items.map(d => `<li><button class="data-row" type="button" data-decision="${escAttr(d.id)}"><span><span class="row-title">${escapeHtml(d.asset)}</span><span class="row-sub">${names[d.market]} · ${escapeHtml(d.verdict)} · ${dateTime(d.asOf)}</span></span><span class="row-right"><span class="delta ${d.reviewAt && !d.verifiedAt && Date.parse(d.reviewAt) <= Date.parse(state.generatedAt) ? 'negative' : ''}">${d.verifiedAt ? '已复核' : d.reviewAt ? '待复核' : '未设复核日'}</span><span class="row-date">${d.reviewAt ? dateTime(d.reviewAt) : '—'}</span></span></button></li>`).join('');
+  const preview = selected ? `<div class="decision-preview"><div class="decision-preview-top"><span>${names[selected.market]} · ${dateTime(selected.asOf)}</span><strong>${escapeHtml(selected.verdict)}</strong></div><h3>${escapeHtml(selected.asset)}</h3><div class="decision-fact"><span>核心依据</span><p>${escapeHtml(selected.thesis || '未提供')}</p></div><div class="decision-fact"><span>最强反证</span><p>${escapeHtml(selected.counterEvidence || '未提供')}</p></div><div class="decision-preview-foot"><span>复核 ${selected.reviewAt ? dateTime(selected.reviewAt) : '未设定'}</span><button class="text-button" type="button" data-decision="${escAttr(selected.id)}">查看完整判断</button></div></div>`
+    : empty('等待研究流程接入', '把监控提醒交给研究流程核对，再由私有台账导出有依据、有反证和复核日的判断。');
+  return pageHead('判断台账', '研究流程写入的判断在这里只读展示。阈值提醒不会自动生成投资结论。') +
+    `<section class="panel wide-panel decision-summary"><div class="summary-strip"><div><strong>${items.length}</strong><span>已导入判断</span></div><div><strong>${due.length}</strong><span>到期复核</span></div><div><strong>${items.filter(d => d.verifiedAt).length}</strong><span>已复核</span></div></div>${state.decisionError ? '<div class="error-notice">部分判断记录格式无效，请检查私有导出文件。</div>' : ''}</section>` +
+    `<section class="panel decision-workspace"><div class="decision-list-pane"><div class="panel-head"><div><h2 class="section-title">研究记录</h2><p class="section-note">保留每次判断和后续复核</p></div></div>${rows ? `<ul class="row-list">${rows}</ul>` : empty('尚无研究判断', '可由私有研究流程导出 decisions.jsonl。')}</div><div class="decision-preview-pane"><div class="panel-head"><div><h2 class="section-title">判断摘要</h2><p class="section-note">当前最需要复核的观点</p></div></div>${preview}</div></section>`;
 }
 
 function alertsPage() {
@@ -93,7 +108,7 @@ function aboutPage() {
 }
 
 function openDetail(html) {
-  lastFocus = document.activeElement;
+  if (detailLayer.hidden) lastFocus = document.activeElement;
   detailLayer.innerHTML = `<div class="detail-panel" role="dialog" aria-modal="true" aria-label="证据详情">${html}</div>`;
   detailLayer.hidden = false;
   document.body.classList.add('has-detail');
@@ -113,9 +128,11 @@ function alertDetail(id) {
   if (!a) return;
   const source = state.runs.find(r => r.runId === a.runId)?.sources.find(s => s.id === a.sourceId);
   const link = safeUrl(source?.sourceUrl);
+  const thresholds = [a.thresholds?.absolute != null ? `绝对变化 ≥ ${number(a.thresholds.absolute, a.unit)}` : '',
+    a.thresholds?.percent != null ? `相对变化 ≥ ${number(a.thresholds.percent, '%')}` : ''].filter(Boolean).join('；') || '见本轮规则定义';
   openDetail(detailHead(`${names[a.market] || a.market} · 待核验`, a.label) +
     `<div class="detail-measure"><div><span>前次有效读数</span><strong>${number(a.before, a.unit)}</strong></div><div><span>本次读数</span><strong>${number(a.after, a.unit)}</strong></div></div>` +
-    `<section class="detail-section"><h3>变化计算</h3><dl class="fact-list"><dt>绝对变化</dt><dd>${signed(a.difference, a.unit)}</dd><dt>相对变化</dt><dd>${signed(a.percent, '%')}</dd><dt>公式</dt><dd>${escapeHtml(a.formula)}</dd><dt>前次时点</dt><dd>${fullTime(a.beforeAsOf)}</dd><dt>本次时点</dt><dd>${fullTime(a.asOf)}</dd></dl></section>` +
+    `<section class="detail-section"><h3>变化计算</h3><dl class="fact-list"><dt>绝对变化</dt><dd>${signed(a.difference, a.unit)}</dd><dt>相对变化</dt><dd>${signed(a.percent, '%')}</dd><dt>触发阈值</dt><dd>${thresholds}</dd><dt>公式</dt><dd>${escapeHtml(a.formula)}</dd><dt>前次时点</dt><dd>${fullTime(a.beforeAsOf)}</dd><dt>本次时点</dt><dd>${fullTime(a.asOf)}</dd></dl></section>` +
     `<section class="detail-section"><h3>证据定位</h3><dl class="fact-list"><dt>运行 ID</dt><dd class="inline-code">${escapeHtml(a.runId)}</dd><dt>提醒 ID</dt><dd class="inline-code">${escapeHtml(a.id)}</dd><dt>来源</dt><dd>${escapeHtml(a.sourceId)}</dd><dt>来源网址</dt><dd>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.sourceUrl)}</a>` : '未提供公开网址'}</dd><dt>研究状态</dt><dd>待核验；尚无投资结论</dd></dl></section>`);
 }
 function runDetail(id) {
@@ -149,11 +166,24 @@ function marketDetail(id) {
     `<section class="detail-section"><h3>来源与时间</h3><dl class="fact-list"><dt>指标</dt><dd>${current ? escapeHtml(current.label) : '未接入或本轮无有效值'}</dd><dt>观察时间</dt><dd>${current ? fullTime(current.asOf) : '—'}</dd><dt>采集时间</dt><dd>${current ? fullTime(current.fetchedAt) : '—'}</dd><dt>来源</dt><dd>${source ? escapeHtml(source.id) : '—'}</dd><dt>来源网址</dt><dd>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.sourceUrl)}</a>` : '未提供公开网址'}</dd></dl></section>`);
 }
 
+function decisionDetail(id) {
+  const d = (state.decisions || []).find(item => item.id === id);
+  if (!d) return;
+  const evidence = Array.isArray(d.evidenceRunIds) ? d.evidenceRunIds.map(runId => state.runs.some(r => r.runId === runId)
+    ? `<button class="text-button evidence-link" type="button" data-run="${escAttr(runId)}">${escapeHtml(runId)}</button>`
+    : `<span class="inline-code">${escapeHtml(runId)} · 不在最近索引中</span>`).join('') : '';
+  openDetail(detailHead(`${names[d.market]} · 研究判断`, d.asset) +
+    `<div class="detail-measure"><div><span>本轮结论</span><strong class="status-value">${escapeHtml(d.verdict)}</strong></div><div><span>适用价格</span><strong>${number(d.price, d.currency || '')}</strong></div></div>` +
+    `<section class="detail-section"><h3>判断范围</h3><dl class="fact-list"><dt>研究时间</dt><dd>${fullTime(d.asOf)}</dd><dt>研究期限</dt><dd>${escapeHtml(d.horizon || '未注明')}</dd><dt>复核日期</dt><dd>${d.reviewAt ? fullTime(d.reviewAt) : '未设定'}</dd><dt>复核状态</dt><dd>${d.verifiedAt ? `已复核 · ${fullTime(d.verifiedAt)}` : '待复核'}</dd></dl></section>` +
+    `<section class="detail-section"><h3>依据与反证</h3><dl class="fact-list"><dt>核心依据</dt><dd>${escapeHtml(d.thesis || '未提供')}</dd><dt>最强反证</dt><dd>${escapeHtml(d.counterEvidence || '未提供')}</dd><dt>证伪条件</dt><dd>${escapeHtml(d.invalidatedBy || '未提供')}</dd></dl></section>` +
+    `<section class="detail-section"><h3>证据关联</h3><dl class="fact-list"><dt>判断 ID</dt><dd class="inline-code">${escapeHtml(d.id)}</dd><dt>运行档案</dt><dd>${evidence || '未关联运行'}</dd></dl></section>`);
+}
+
 function render() {
   if (!state) return;
   const section = nav();
   document.querySelectorAll('[data-nav]').forEach(a => a.setAttribute('aria-current', a.dataset.nav === section ? 'page' : 'false'));
-  app.innerHTML = ({ overview, alerts: alertsPage, runs: runsPage, about: aboutPage })[section]();
+  app.innerHTML = ({ overview, alerts: alertsPage, decisions: decisionsPage, runs: runsPage, about: aboutPage })[section]();
 }
 async function load() {
   try {
@@ -165,12 +195,13 @@ async function load() {
   } catch { app.innerHTML = '<div class="error-notice">暂时无法读取运行档案。请检查本机服务和数据目录。</div>'; }
 }
 document.addEventListener('click', event => {
-  const target = event.target.closest('[data-alert],[data-run],[data-market],[data-close]');
+  const target = event.target.closest('[data-alert],[data-run],[data-market],[data-decision],[data-close]');
   if (!target) return;
   if (target.dataset.close !== undefined) closeDetail();
   else if (target.dataset.alert) alertDetail(target.dataset.alert);
   else if (target.dataset.run) runDetail(target.dataset.run);
   else if (target.dataset.market) marketDetail(target.dataset.market);
+  else if (target.dataset.decision) decisionDetail(target.dataset.decision);
 });
 detailLayer.addEventListener('click', event => { if (event.target === detailLayer) closeDetail(); });
 document.addEventListener('keydown', event => {

@@ -111,6 +111,37 @@ export async function readRuns(root = dataDir(), limit = 20) {
   return runs;
 }
 
+export async function readDecisions(root = dataDir()) {
+  let content;
+  try { content = await fs.readFile(path.join(root, 'decisions.jsonl'), 'utf8'); }
+  catch (error) { return { items: [], error: error.code !== 'ENOENT' }; }
+  const items = [];
+  let error = false;
+  for (const line of content.split('\n').filter(Boolean)) {
+    try {
+      const item = JSON.parse(line);
+      if (typeof item.id !== 'string' || !item.id || !markets.includes(item.market) ||
+          typeof item.asset !== 'string' || !item.asset || typeof item.verdict !== 'string' || !item.verdict ||
+          typeof item.asOf !== 'string' || Number.isNaN(Date.parse(item.asOf)) ||
+          (item.reviewAt && (typeof item.reviewAt !== 'string' || Number.isNaN(Date.parse(item.reviewAt)))) ||
+          (item.verifiedAt && (typeof item.verifiedAt !== 'string' || Number.isNaN(Date.parse(item.verifiedAt))))) throw new Error('Invalid decision');
+      // Explicitly allowlist browser-visible fields. Private exports may carry account data.
+      items.push({ id: String(item.id), market: item.market, asset: String(item.asset),
+        verdict: String(item.verdict), asOf: item.asOf,
+        price: typeof item.price === 'number' && Number.isFinite(item.price) ? item.price : null,
+        currency: item.currency ? String(item.currency) : null,
+        horizon: item.horizon ? String(item.horizon) : null,
+        thesis: item.thesis ? String(item.thesis) : null,
+        counterEvidence: item.counterEvidence ? String(item.counterEvidence) : null,
+        invalidatedBy: item.invalidatedBy ? String(item.invalidatedBy) : null,
+        reviewAt: item.reviewAt || null, verifiedAt: item.verifiedAt || null,
+        evidenceRunIds: Array.isArray(item.evidenceRunIds) ? item.evidenceRunIds.filter(v => typeof v === 'string').slice(0, 20) : [] });
+    } catch { error = true; }
+  }
+  items.sort((a, b) => b.asOf.localeCompare(a.asOf));
+  return { items: items.slice(0, 100), error };
+}
+
 export function compare(current, previous, source, existingAlertIds = new Set()) {
   const alerts = [];
   for (const item of current) {
@@ -128,6 +159,7 @@ export function compare(current, previous, source, existingAlertIds = new Set())
     alerts.push({ id, market: item.market, sourceId: source.id, metricId: item.metricId,
       label: item.label, before: old.value, after: item.value, unit: item.unit, difference, percent,
       beforeAsOf: old.asOf, asOf: item.asOf, severity: 'review', status: 'unverified',
+      thresholds: { absolute: metric.alertAbsolute ?? null, percent: metric.alertPercent ?? null },
       formula: percent == null ? 'current - previous' : '(current - previous) / abs(previous) × 100' });
   }
   return alerts;
@@ -150,9 +182,14 @@ export async function sendNotifications(alerts, runId, channels = ['telegram', '
   }
   if (channels.includes('webhook') && process.env.ALERT_WEBHOOK_URL) {
     try {
+      const endpoint = new URL(process.env.ALERT_WEBHOOK_URL);
+      const local = ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname);
+      if ((endpoint.protocol !== 'https:' && !(endpoint.protocol === 'http:' && local)) || endpoint.username || endpoint.password) {
+        throw new Error('Webhook URL must use HTTPS without embedded credentials');
+      }
       const headers = { 'content-type': 'application/json' };
       if (process.env.ALERT_WEBHOOK_BEARER) headers.authorization = `Bearer ${process.env.ALERT_WEBHOOK_BEARER}`;
-      const response = await fetch(process.env.ALERT_WEBHOOK_URL, { method: 'POST', headers,
+      const response = await fetch(endpoint, { method: 'POST', headers,
         body: JSON.stringify({ runId, alertIds: alerts.map(a => a.id), message, url: base }), signal: AbortSignal.timeout(10000) });
       results.push({ channel: 'webhook', status: response.ok ? 'sent' : 'failed', code: response.status });
     } catch { results.push({ channel: 'webhook', status: 'failed' }); }
@@ -169,8 +206,12 @@ export async function collect(root = dataDir(), config) {
   const existingAlertIds = new Set(prior.flatMap(run => (run.alerts || []).map(a => a.id)));
   const observations = [], alerts = [], sources = [];
   for (const source of config.sources) {
+    const definition = { kind: source.kind, maxAgeMinutes: source.maxAgeMinutes || null,
+      metrics: source.metrics.map(metric => ({ id: metric.id, label: metric.label || metric.id,
+        path: metric.path, asOfPath: metric.asOfPath || null, unit: metric.unit,
+        alertAbsolute: metric.alertAbsolute ?? null, alertPercent: metric.alertPercent ?? null })) };
     if (source.kind === 'http-json' && !process.env[source.urlEnv]) {
-      sources.push({ id: source.id, market: source.market, status: 'unconfigured' });
+      sources.push({ id: source.id, market: source.market, status: 'unconfigured', definition });
       continue;
     }
     try {
@@ -192,10 +233,10 @@ export async function collect(root = dataDir(), config) {
         }
       }
       sources.push({ id: source.id, market: source.market, status: validItems.length ? 'ok' : items.length ? 'stale' : 'missing',
-        fetchedAt, count: items.length, validCount: validItems.length, sourceUrl: publicUrl || sourceUrl?.origin || null });
+        fetchedAt, count: items.length, validCount: validItems.length, sourceUrl: publicUrl || sourceUrl?.origin || null, definition });
     } catch (error) {
       // Do not persist raw exception text; URLs and credentials may appear there.
-      sources.push({ id: source.id, market: source.market, status: 'failed', error: error.message.startsWith('Source returned HTTP') ? error.message : 'Collection failed' });
+      sources.push({ id: source.id, market: source.market, status: 'failed', error: error.message.startsWith('Source returned HTTP') ? error.message : 'Collection failed', definition });
     }
   }
   const run = { schemaVersion: 1, runId, startedAt, finishedAt: new Date().toISOString(),
@@ -235,6 +276,7 @@ export async function retryNotifications(root = dataDir()) {
 
 export async function dashboardState(root = dataDir()) {
   const runs = await readRuns(root, 50);
+  const decisions = await readDecisions(root);
   const latest = runs[0] || null;
   const latestByMarket = Object.fromEntries(markets.map(market => {
     const observation = runs.flatMap(r => r.observations || []).find(o => o.market === market && o.quality !== 'stale');
@@ -246,6 +288,7 @@ export async function dashboardState(root = dataDir()) {
   }));
   return { generatedAt: new Date().toISOString(), latest, markets: latestByMarket,
     alerts: runs.flatMap(r => (r.alerts || []).map(a => ({ ...a, runId: r.runId }))).slice(0, 100),
+    decisions: decisions.items, decisionError: decisions.error,
     runs: runs.map(r => ({ runId: r.runId, startedAt: r.startedAt, finishedAt: r.finishedAt,
       sources: r.sources, observations: r.observations, observationCount: r.observations.length, alertCount: r.alerts.length })) };
 }

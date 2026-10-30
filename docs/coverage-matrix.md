@@ -7,6 +7,7 @@ This matrix describes the repository's first release. “Local pass” means it 
 | Overview and four-market coverage | Pass | Pass | Pass | Pass | Pass | Local pass |
 | Alert list, market filter, evidence panel | Pass | Pass | Pass | Pass | Pass | Local pass |
 | Run list and run evidence | Pass | Pass | Pass | Pass | Pass | Local pass |
+| Decision ledger and due review | Pass | Pass | Pass | Pass | Pass | Local pass |
 | Configuration guidance | Pass | Pass | Pass | Pass | Pass | Local pass |
 | HTTP JSON and local script monitors | Unconfigured state | Local script test | N/A | N/A | N/A | Local pass |
 | Telegram notification | Unset state | N/A | N/A | N/A | N/A | Code only; no live bot credentials used |

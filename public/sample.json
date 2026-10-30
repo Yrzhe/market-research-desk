@@ -64,6 +64,10 @@
         "asOf": "2026-01-07T00:00:00.000Z",
         "severity": "review",
         "status": "unverified",
+        "thresholds": {
+          "absolute": null,
+          "percent": 4
+        },
         "formula": "(current - previous) / abs(previous) × 100"
       }
     ],
@@ -221,10 +225,34 @@
       "asOf": "2026-01-07T00:00:00.000Z",
       "severity": "review",
       "status": "unverified",
+      "thresholds": {
+        "absolute": null,
+        "percent": 4
+      },
       "formula": "(current - previous) / abs(previous) × 100",
       "runId": "2026-01-07T23-10-00-000Z-000003"
     }
   ],
+  "decisions": [
+    {
+      "id": "sample-decision-01",
+      "market": "crypto",
+      "asset": "示例资产 X",
+      "verdict": "证据不足",
+      "asOf": "2026-01-06T12:00:00.000Z",
+      "price": null,
+      "currency": "USD",
+      "horizon": "30 天",
+      "thesis": "需要进一步核对公开披露、使用量与供给变化。",
+      "counterEvidence": "当前合成样本无法支持明确的价值判断。",
+      "invalidatedBy": "若可核对的数据仍不足，维持未裁决并复核。",
+      "reviewAt": "2026-01-07T12:00:00.000Z",
+      "evidenceRunIds": [
+        "2026-01-07T23-10-00-000Z-000003"
+      ]
+    }
+  ],
+  "decisionError": false,
   "runs": [
     {
       "runId": "2026-01-07T23-10-00-000Z-000003",

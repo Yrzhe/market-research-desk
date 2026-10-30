@@ -20,13 +20,20 @@ const runs = days.map((day, i) => {
   const alerts = i === 2 ? [{ id: 'sample-alert-01', market: 'crypto', sourceId: '加密市场市值', metricId: 'headline',
     label: '总市值', before: 2785, after: 2650, unit: 'USD bn', difference: -135,
     percent: (2650 - 2785) / 2785 * 100, beforeAsOf: `${days[1]}T00:00:00.000Z`, asOf: `${day}T00:00:00.000Z`,
-    severity: 'review', status: 'unverified', formula: '(current - previous) / abs(previous) × 100' }] : [];
+    severity: 'review', status: 'unverified', thresholds: { absolute: null, percent: 4 }, formula: '(current - previous) / abs(previous) × 100' }] : [];
   return { schemaVersion: 1, runId, startedAt, finishedAt: startedAt, observations, alerts, sources, notifications: [] };
 });
 const newest = runs[2];
+const decisions = [{ id: 'sample-decision-01', market: 'crypto', asset: '示例资产 X', verdict: '证据不足',
+  asOf: '2026-01-06T12:00:00.000Z', price: null, currency: 'USD', horizon: '30 天',
+  thesis: '需要进一步核对公开披露、使用量与供给变化。',
+  counterEvidence: '当前合成样本无法支持明确的价值判断。',
+  invalidatedBy: '若可核对的数据仍不足，维持未裁决并复核。',
+  reviewAt: '2026-01-07T12:00:00.000Z', evidenceRunIds: [newest.runId] }];
 const state = { sample: true, generatedAt: '2026-01-07T23:12:00.000Z', latest: newest,
   markets: Object.fromEntries(markets.map(([market]) => [market, { status: 'ok', observation: newest.observations.find(o => o.market === market), observations: newest.observations.filter(o => o.market === market) }])),
   alerts: newest.alerts.map(a => ({ ...a, runId: newest.runId })),
+  decisions, decisionError: false,
   runs: runs.reverse().map(r => ({ runId: r.runId, startedAt: r.startedAt, finishedAt: r.finishedAt,
     sources: r.sources, observations: r.observations, observationCount: r.observations.length, alertCount: r.alerts.length })) };
 await fs.writeFile(new URL('../public/sample.json', import.meta.url), JSON.stringify(state, null, 2) + '\n');

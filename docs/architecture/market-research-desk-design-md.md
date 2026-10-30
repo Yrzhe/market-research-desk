@@ -26,11 +26,14 @@ Tokens: ground `#f2f4f7`; surface `#fff`; text `#0a0a0a`; muted `#626b76`; borde
 
 The data accent marks actual coverage and the current time series. Status colors are limited to small text and markers. This keeps the finance display legible without confusing price direction with evidence quality. Light mode is the primary design; dark mode follows the same hierarchy.
 
+The visual inspector reports `no-data-hue` on the judgment page even though that page contains no chart. The judgment's due count uses the blue data accent; a fabricated chart would make the evidence less clear.
+
 ## Screens and interactions
 
 - Overview: current run/time, coverage rail, top factual alerts, four-market matrix, recent observations and run health.
 - Alerts: filter by market and severity; open an alert to read old and new values, unit, timestamps, source and formula.
 - Runs: list immutable runs and source failures; open each run's observations.
+- Decisions: read private imported judgments, show the original scope and counterevidence, and surface reviews due by date. The monitor never writes this file.
 - Source detail: show source URL and timestamp from the run, with an explicit missing/failed state.
 - Settings: documentation only in this first read-only build; configuration is edited on the host and reloaded on the next monitor run.
 

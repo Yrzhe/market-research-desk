@@ -11,6 +11,7 @@ These screenshots use fictional, explicitly labelled sample data. The default in
 | Desktop | Phone |
 | --- | --- |
 | ![Synthetic sample dashboard at desktop width](docs/screenshots/overview-desktop-sample.jpg) | ![Synthetic sample dashboard at phone width](docs/screenshots/overview-mobile-sample.jpg) |
+| ![Synthetic research decision ledger at desktop width](docs/screenshots/decisions-desktop-sample.jpg) | ![Synthetic research decision ledger at phone width](docs/screenshots/decisions-mobile-sample.jpg) |
 
 ## Quick start
 
@@ -69,11 +70,23 @@ For a local script, place a `.mjs` file in `scripts/monitors/` and configure `ki
 
 ## Archive and notifications
 
-Each run is written to `DATA_DIR/runs/<run-id>/run.json` through an atomic rename. A failed or missing source is recorded, and a stale value never becomes a new alert. The app keeps only configured observations and source metadata, not raw third-party payloads or full-market intraday prices. It never stores a URL's query string or HTTP authorization header. Notification delivery results are separate files in `DATA_DIR/`; a failed notification does not change the immutable observation run.
+Each run is written to `DATA_DIR/runs/<run-id>/run.json` through an atomic rename. A failed or missing source is recorded, and a stale value never becomes a new alert. The archive records each metric's field mapping, unit and threshold so an old alert remains explainable after configuration changes. It keeps only configured observations and source metadata, not raw third-party payloads or full-market intraday prices. It never stores a URL's query string or HTTP authorization header. Notification delivery results are separate files in `DATA_DIR/`; a failed notification does not change the immutable observation run.
 
 Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` for Telegram, or `ALERT_WEBHOOK_URL` and optional `ALERT_WEBHOOK_BEARER` for an outbound webhook. Alerts contain only a count, alert IDs, run ID, optional dashboard URL, and a reminder that no investment conclusion was generated. Bot tokens and recipients stay in the private environment, never in Git, logs, or alert bodies. Notifications are only sent for newly generated alerts.
 
 If delivery fails, run `node src/cli.js retry` to retry channels without a recorded successful send. Telegram cannot guarantee exactly-once delivery if a process crashes after sending but before recording success; the alert ID helps recognize a duplicate.
+
+## Read-only research decisions
+
+A private research process can export one JSON object per line to `DATA_DIR/decisions.jsonl`. The dashboard reads it but never writes judgments. Keep this file outside the Git repository or inside the ignored `data/` directory. An example record shape:
+
+```json
+{"id":"research-001","market":"crypto","asset":"Example Asset","verdict":"insufficient evidence","asOf":"2026-01-07T12:00:00Z","price":null,"currency":"USD","horizon":"30 days","thesis":"Evidence to check","counterEvidence":"Strongest contrary observation","invalidatedBy":"Condition that would reverse this view","reviewAt":"2026-02-07T12:00:00Z","evidenceRunIds":["run-id-from-archive"]}
+```
+
+`market` is one of `a-share`, `hong-kong`, `us`, or `crypto`. `reviewAt` marks an item as due once that time passes; `verifiedAt` marks a completed review. Preserve revisions as separate records with new IDs rather than overwriting an old judgment. This format is an import contract, not an alternative write path for an existing private research ledger.
+
+The web API returns only the documented decision fields; extra fields in a private export are discarded. Any text placed in `thesis`, `counterEvidence`, or similar displayed fields is still visible to authenticated dashboard viewers, so keep account details and credentials out of them.
 
 Schedule `npm run monitor` with a host scheduler. [`docs/deploy/systemd.md`](docs/deploy/systemd.md) gives a Linux example. The dashboard starts with `npm start` and reads archives; it does not schedule monitoring itself.
 
@@ -81,7 +94,7 @@ Schedule `npm run monitor` with a host scheduler. [`docs/deploy/systemd.md`](doc
 
 By default the dashboard listens on `127.0.0.1:4173`. To access it remotely, put an authentication layer in front of a Tunnel or reverse proxy. For Cloudflare, create a private Access application and a Tunnel route to the loopback service; verify that an unauthenticated browser cannot load the page or `/api/state` before adding real research data. `ALLOW_REMOTE=1` is required to bind a non-loopback address and should only be used behind an authenticated proxy.
 
-Keep personal holdings, deep research, reports, database indexes, and decisions in a private storage location. If a private research process later writes decisions, it should link to a `runId` and its underlying evidence; this public monitor does not publish or infer investment judgments. Check each data provider's license before retaining or redistributing observations.
+Keep personal holdings, deep research, reports, database indexes, and decisions in a private storage location. If a private research process exports decisions, link each one to a run ID and its evidence. The public repository contains no real judgments, and the monitor does not infer them. Check each data provider's license before retaining or redistributing observations.
 
 ## Development
 
