@@ -103,6 +103,13 @@ export async function runAllSources(env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (env.LEGACY_HOST && env.PRIMARY_HOST && url.hostname === env.LEGACY_HOST) {
+      const target = new URL(request.url);
+      target.protocol = 'https:';
+      target.hostname = env.PRIMARY_HOST;
+      target.port = '';
+      return new Response(null, { status: 308, headers: { ...securityHeaders, location: target.href, 'cache-control': 'no-store' } });
+    }
     if (request.method !== 'GET') return respond('Method not allowed', 405, 'text/plain; charset=utf-8');
     try {
       if (url.pathname === '/api/state') return json(await readState(env.DB));

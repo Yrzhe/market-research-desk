@@ -28,6 +28,8 @@ Binance Spot [market-data-only documentation](https://github.com/binance/binance
 
 The Worker runs two scheduled checks in UTC: 00:30 every day and 09:30 Monday to Friday. It records each source's success or failure in `source_runs`. Schedule deployment alone does not prove future runs; confirm the next run in the site's operations view.
 
+If a previously shared hostname needs to keep working after a rename, bind it as an additional custom domain and set `LEGACY_HOST` and `PRIMARY_HOST` privately. The Worker responds with a 308 redirect to the owner-protected current hostname without serving data on the old host.
+
 ## VPS workspace
 
 The Cloudflare Worker handles the pilot's scheduled SEC and completed daily-candle checks. The VPS also runs `vps/market-api.mjs` on loopback for on-demand Binance search and price intervals. This is necessary because Binance's public host returns HTTP 403 to Cloudflare Worker egress in this deployment. The Worker calls the VPS through a separate Cloudflare Tunnel hostname protected by a service-token-only Access application and an origin token. The website itself remains protected by the owner's email-only Access application. The browser never sees either machine credential.
