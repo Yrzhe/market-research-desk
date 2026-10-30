@@ -5,6 +5,8 @@ const detailLayer = document.querySelector('#detail-layer');
 let state;
 let marketFilter = 'all';
 let severityFilter = 'all';
+let assetMarketFilter = 'all';
+let assetQuery = '';
 let lastFocus = null;
 
 function escapeHtml(value) {
@@ -38,7 +40,11 @@ function displayMeasure(value, unit = '') {
   return `<span class="figure-amount">${amount}</span>${unit ? `<span class="figure-unit">${escapeHtml(unit)}</span>` : ''}`;
 }
 function escAttr(value) { return escapeHtml(value); }
-function nav() { return ['overview', 'alerts', 'decisions', 'runs', 'about'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; }
+function nav() {
+  const route = location.hash.slice(1);
+  if (route.startsWith('asset/')) return 'assets';
+  return ['overview', 'assets', 'alerts', 'decisions', 'runs', 'about'].includes(route) ? route : 'overview';
+}
 function pageHead(title, subtitle) {
   return `<header class="page-head"><div><p class="eyebrow">四市场研究 ${new URLSearchParams(location.search).has('sample') ? '<span class="sample-flag">合成示例数据</span>' : ''}</p><h1 class="page-title">${title}</h1><p class="page-subtitle">${subtitle}</p></div><div class="head-meta"><span>数据读取于</span><strong>${fullTime(state.generatedAt)}</strong></div></header>`;
 }
@@ -46,6 +52,58 @@ function sectionHead(title, note, link = '') {
   return `<div class="section-head"><div><h2 class="section-title">${title}</h2><p class="section-note">${note}</p></div>${link}</div>`;
 }
 function empty(title, text) { return `<div class="empty-state"><strong>${title}</strong><p>${text}</p></div>`; }
+function assetName(id) { return (state.assets || []).find(asset => asset.id === id)?.name || null; }
+
+function assetsPage() {
+  const items = state.assets || [];
+  const rows = items.map(asset => {
+    const price = (asset.observations || []).find(o => o.role === 'price');
+    const alertCount = state.alerts.filter(a => a.assetId === asset.id).length;
+    return `<a class="asset-row" href="#asset/${escAttr(asset.id)}" data-asset-row data-market="${escAttr(asset.market)}" data-search="${escAttr(`${asset.symbol} ${asset.name}`.toLowerCase())}">
+      <span class="asset-identity"><strong>${escapeHtml(asset.symbol)}</strong><span>${escapeHtml(asset.name)} · ${names[asset.market] || escapeHtml(asset.market)}</span></span>
+      <span class="asset-quote"><strong>${price ? number(price.value, price.unit) : '—'}</strong><span>${price ? `${escapeHtml(price.sourceId)} · ${dateTime(price.asOf)}` : '未接入有效报价'}</span></span>
+      <span class="asset-row-end"><span class="asset-state ${escAttr(asset.status)}"><i class="status-mark ${escAttr(asset.status)}"></i>${statusNames[asset.status] || '无数据'}</span><span>${alertCount ? `${alertCount} 条待核验` : '查看标的'}</span></span>
+    </a>`;
+  }).join('');
+  return pageHead('关注标的', '按市场进入标的，核对报价、变化与资料。') +
+    `<section class="asset-index-head"><div><h2 class="section-title">标的目录</h2><p class="section-note">${items.length} 个已配置标的 · 只记录配置的采样指标</p></div><div class="asset-filters"><label class="sr-only" for="asset-search">搜索标的</label><input id="asset-search" class="asset-search" type="search" placeholder="搜索代码或名称" value="${escAttr(assetQuery)}"><label class="sr-only" for="asset-market-filter">筛选市场</label><select id="asset-market-filter" class="filter-select"><option value="all">全部市场</option>${Object.entries(names).map(([id, name]) => `<option value="${id}" ${assetMarketFilter === id ? 'selected' : ''}>${name}</option>`).join('')}</select></div></section>` +
+    `<section class="panel asset-index" aria-label="标的列表"><div class="asset-list-head"><span>标的 / 市场</span><span>最近有效报价与来源</span><span>状态</span></div><div id="asset-list">${rows || empty('还没有关注标的', '在私有配置中添加标的及其指标；公开仓库不包含个人关注列表。')}</div><div id="asset-filter-empty" class="empty-state" hidden><strong>没有匹配的标的</strong><p>调整搜索词或市场筛选。</p></div></section>`;
+}
+
+function assetPage(id) {
+  const asset = (state.assets || []).find(item => item.id === id);
+  if (!asset) return pageHead('标的不存在', '此标的未在当前私有配置中登记。') + '<a class="section-link" href="#assets">返回标的目录</a>';
+  const observations = asset.observations || [];
+  const price = observations.find(o => o.role === 'price');
+  const points = price ? state.runs.map(r => r.observations?.find(o => o.assetId === id && o.sourceId === price.sourceId && o.metricId === price.metricId && o.unit === price.unit && o.quality !== 'stale')).filter(Boolean).reverse() : [];
+  const alerts = state.alerts.filter(a => a.assetId === id);
+  const decisions = (state.decisions || []).filter(d => d.assetId === id);
+  const documents = (state.documents || []).filter(d => d.assetId === id);
+  const documentKinds = { research: '研报 / 研究', filing: '披露', earnings: '财报', call: '电话会', other: '其他资料' };
+  const metricRows = observations.map(o => `<div class="asset-metric-row"><span><strong>${escapeHtml(o.label)}</strong><small>${escapeHtml(o.sourceId)} · ${dateTime(o.asOf)}</small></span><b>${number(o.value, o.unit)}</b></div>`).join('');
+  const alertRows = alerts.map(a => `<li><button class="data-row" type="button" data-alert="${escAttr(a.id)}"><span><span class="row-title">${escapeHtml(a.label)}</span><span class="row-sub">${escapeHtml(a.sourceId)} · ${dateTime(a.asOf)}</span></span><span class="row-right"><span class="delta ${a.difference < 0 ? 'negative' : 'positive'}">${signed(a.percent, '%')}</span><span class="row-date">查看计算</span></span></button></li>`).join('');
+  const decisionRows = decisions.map(d => `<li><button class="data-row" type="button" data-decision="${escAttr(d.id)}"><span><span class="row-title">${escapeHtml(d.verdict)}</span><span class="row-sub">研究于 ${dateTime(d.asOf)} · 复核 ${d.reviewAt ? dateTime(d.reviewAt) : '未设定'}</span></span><span class="row-date">查看依据</span></button></li>`).join('');
+  const documentRows = documents.map(d => {
+    const link = safeUrl(d.sourceUrl);
+    return `<li class="asset-document"><span class="asset-doc-kind">${documentKinds[d.kind] || '资料'}</span><span class="asset-doc-copy"><strong>${escapeHtml(d.title)}</strong><small>${escapeHtml(d.sourceId)} · ${dateTime(d.asOf)}</small></span>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer" aria-label="打开${escAttr(d.title)}来源">查看来源</a>` : '<span class="asset-doc-muted">仅元数据</span>'}</li>`;
+  }).join('');
+  return `<a class="asset-back" href="#assets">返回标的目录</a>` + pageHead(escapeHtml(asset.name), `${escapeHtml(asset.symbol)} · ${names[asset.market] || escapeHtml(asset.market)}${asset.exchange ? ` · ${escapeHtml(asset.exchange)}` : ''}`) +
+    `<div class="asset-main panel"><section class="asset-price"><div class="asset-price-top"><span>参考报价</span><span class="asset-state ${escAttr(asset.status)}"><i class="status-mark ${escAttr(asset.status)}"></i>${statusNames[asset.status] || '无数据'}</span></div><div class="asset-price-value">${price ? displayMeasure(price.value, price.unit) : '—'}</div><p>${price ? `${escapeHtml(price.sourceId)} · ${dateTime(price.asOf)}` : '本轮没有可展示的有效报价'}</p><div class="asset-chart-title">${points.length >= 2 ? `最近 ${points.length} 次同源有效观察` : '尚无可比趋势'}</div>${points.length >= 2 ? trendSvg(points, price.unit) : '<div class="asset-chart-empty">接入同源历史读数后显示趋势。</div>'}<div class="asset-price-foot">${price ? '观察值与采集时间以来源记录为准' : '过期或失败值不沿用为当前价格'}</div></section><aside class="asset-side"><div><span>标的代码</span><strong>${escapeHtml(asset.symbol)}</strong></div><div><span>市场 / 场所</span><strong>${names[asset.market] || escapeHtml(asset.market)}${asset.exchange ? ` · ${escapeHtml(asset.exchange)}` : ''}</strong></div><div><span>最近观察</span><strong>${price ? fullTime(price.asOf) : '—'}</strong></div><div><span>来源状态</span><strong>${statusNames[asset.status] || '无数据'}</strong></div><div class="asset-side-counts"><span>${alerts.length} 条待核验</span><span>${documents.length} 份资料</span><span>${decisions.length} 条判断</span></div></aside></div>` +
+    `<div class="asset-content-grid"><section>${sectionHead('已接入指标', '仅列本轮来源有效的读数')}<div class="panel asset-metrics">${metricRows || empty('没有有效读数', '报价与指标需在监控配置中关联此标的。')}</div></section><section>${sectionHead('相关提醒', '事实变化需要另行研究')}<div class="panel">${alertRows ? `<ul class="row-list">${alertRows}</ul>` : empty('目前没有待核验变化', '配置阈值并积累可比读数后，提醒会关联到此标的。')}</div></section></div>` +
+    `<div class="asset-content-grid asset-lower"><section>${sectionHead('资料与事件', '研报、披露、财报与电话会按标的关联')}<div class="panel">${state.documentError ? '<div class="error-notice">部分资料元数据无效。</div>' : ''}${documentRows ? `<ul class="asset-documents">${documentRows}</ul>` : empty('尚无关联资料', '可从私有资料索引导入标题、来源和日期。')}</div></section><section>${sectionHead('研究判断', '保留依据、反证与复核日期')}<div class="panel">${decisionRows ? `<ul class="row-list">${decisionRows}</ul>` : empty('尚无研究判断', '由私有研究流程导入；监控不会自动生成投资结论。')}</div></section></div>`;
+}
+
+function applyAssetFilters() {
+  const rows = [...document.querySelectorAll('[data-asset-row]')];
+  if (!rows.length) return;
+  let visible = 0;
+  for (const row of rows) {
+    row.hidden = (assetMarketFilter !== 'all' && row.dataset.market !== assetMarketFilter) || !row.dataset.search.includes(assetQuery.toLowerCase().trim());
+    if (!row.hidden) visible++;
+  }
+  const emptyResult = document.querySelector('#asset-filter-empty');
+  if (emptyResult) emptyResult.hidden = visible !== 0;
+}
 
 function overview() {
   const marketEntries = Object.entries(state.markets);
@@ -62,11 +120,11 @@ function overview() {
     </button>`;
   }).join('');
   const alerts = state.alerts.slice(0, 4);
-  const alertRows = alerts.map(a => `<li><button class="data-row" type="button" data-alert="${escAttr(a.id)}"><span><span class="row-title">${escapeHtml(a.label)}</span><span class="row-sub">${names[a.market] || escapeHtml(a.market)} · 待核验 · ${escapeHtml(a.sourceId)}</span></span><span class="row-right"><span class="delta ${a.difference < 0 ? 'negative' : 'positive'}">${signed(a.percent, '%')}</span><span class="row-date">${dateTime(a.asOf)}</span></span></button></li>`).join('');
+  const alertRows = alerts.map(a => `<li><button class="data-row" type="button" data-alert="${escAttr(a.id)}"><span><span class="row-title">${escapeHtml(a.label)}</span><span class="row-sub">${a.assetId && assetName(a.assetId) ? `${escapeHtml(assetName(a.assetId))} · ` : ''}${names[a.market] || escapeHtml(a.market)} · 待核验 · ${escapeHtml(a.sourceId)}</span></span><span class="row-right"><span class="delta ${a.difference < 0 ? 'negative' : 'positive'}">${signed(a.percent, '%')}</span><span class="row-date">${dateTime(a.asOf)}</span></span></button></li>`).join('');
   const primaryAlert = alerts[0];
   const contextPoints = primaryAlert ? state.runs.map(r => r.observations?.find(o => o.sourceId === primaryAlert.sourceId && o.metricId === primaryAlert.metricId && o.unit === primaryAlert.unit && o.quality !== 'stale')).filter(Boolean).reverse() : [];
   const alertContext = contextPoints.length >= 2 ? `<div class="trend-snippet"><div class="trend-caption"><div><span class="trend-overline">本轮变化 · ${names[primaryAlert.market] || escapeHtml(primaryAlert.market)}</span><strong>${escapeHtml(primaryAlert.label)}</strong><span class="trend-current">${escapeHtml(primaryAlert.sourceId)} · ${dateTime(primaryAlert.asOf)}</span></div><strong class="trend-change ${primaryAlert.difference < 0 ? 'negative' : 'positive'}">${signed(primaryAlert.percent, '%')}</strong></div><div class="trend-measures"><div><span>前次有效读数</span><strong>${number(primaryAlert.before, primaryAlert.unit)}</strong></div><div><span>本次读数</span><strong>${number(primaryAlert.after, primaryAlert.unit)}</strong></div><div><span>变化量</span><strong class="${primaryAlert.difference < 0 ? 'negative' : 'positive'}">${signed(primaryAlert.difference, primaryAlert.unit)}</strong></div></div><div class="trend-context">最近 ${contextPoints.length} 次可比观察</div>${trendSvg(contextPoints, primaryAlert.unit)}<div class="trend-footer"><span>同一来源与指标的归档值</span><button class="text-button" type="button" data-alert="${escAttr(primaryAlert.id)}">查看计算与来源</button></div></div>` : '';
-  const sourceRows = state.latest?.sources?.map(s => `<div class="health-item"><span class="source-name">${names[s.market] || escapeHtml(s.market)} <span class="row-sub">${escapeHtml(s.id)}</span></span><span class="source-state ${escAttr(s.status)}">${statusNames[s.status] || escapeHtml(s.status)}</span></div>`).join('') || '';
+  const sourceRows = state.latest?.sources?.filter(s => !s.definition?.metrics?.length || s.definition.metrics.some(m => !m.assetId)).map(s => `<div class="health-item"><span class="source-name">${names[s.market] || escapeHtml(s.market)} <span class="row-sub">${escapeHtml(s.id)}</span></span><span class="source-state ${escAttr(s.status)}">${statusNames[s.status] || escapeHtml(s.status)}</span></div>`).join('') || '';
   const due = (state.decisions || []).filter(d => d.reviewAt && !d.verifiedAt && Date.parse(d.reviewAt) <= Date.parse(state.generatedAt));
   const dueRows = due.slice(0, 3).map(d => `<li><button class="data-row" type="button" data-decision="${escAttr(d.id)}"><span><span class="row-title">${escapeHtml(d.asset)}</span><span class="row-sub">${names[d.market]} · ${escapeHtml(d.verdict)} · 到期复核</span></span><span class="row-right"><span class="row-date">${dateTime(d.reviewAt)}</span></span></button></li>`).join('');
   const dueSection = `<section class="due-section">${sectionHead('到期复盘', due.length ? `${due.length} 条待复核` : '当前无待复核', '<a class="section-link" href="#decisions">判断台账</a>')}<div class="due-content">${dueRows ? `<ul class="row-list">${dueRows}</ul>` : empty('目前没有到期判断', '新研究判断导入后，在此显示复核日期。')}</div></section>`;
@@ -95,7 +153,7 @@ function decisionsPage() {
 
 function alertsPage() {
   const visible = state.alerts.filter(a => (marketFilter === 'all' || a.market === marketFilter) && (severityFilter === 'all' || a.severity === severityFilter));
-  const rows = visible.map(a => `<li><button class="data-row" type="button" data-alert="${escAttr(a.id)}"><span><span class="row-title">${escapeHtml(a.label)}</span><span class="row-sub">${names[a.market] || escapeHtml(a.market)} · ${escapeHtml(a.sourceId)} · ${escapeHtml(a.status)}</span></span><span class="delta ${a.difference < 0 ? 'negative' : 'positive'}">${signed(a.difference, a.unit)}</span><span class="row-date">${dateTime(a.asOf)}</span></button></li>`).join('');
+  const rows = visible.map(a => `<li><button class="data-row" type="button" data-alert="${escAttr(a.id)}"><span><span class="row-title">${a.assetId && assetName(a.assetId) ? `${escapeHtml(assetName(a.assetId))} · ` : ''}${escapeHtml(a.label)}</span><span class="row-sub">${names[a.market] || escapeHtml(a.market)} · ${escapeHtml(a.sourceId)} · ${escapeHtml(a.status)}</span></span><span class="delta ${a.difference < 0 ? 'negative' : 'positive'}">${signed(a.difference, a.unit)}</span><span class="row-date">${dateTime(a.asOf)}</span></button></li>`).join('');
   return pageHead('待核验', '逐条查看可比变化、计算与来源。') +
     `<section>${sectionHead('观察队列', `${visible.length} 条符合筛选条件`, `<div class="filters"><label><span class="sr-only">市场</span><select id="market-filter" class="filter-select"><option value="all">全部市场</option>${Object.entries(names).map(([id,name]) => `<option value="${id}" ${marketFilter === id ? 'selected' : ''}>${name}</option>`).join('')}</select></label><label><span class="sr-only">严重度</span><select id="severity-filter" class="filter-select"><option value="all">全部状态</option><option value="review" ${severityFilter === 'review' ? 'selected' : ''}>待核验</option></select></label></div>`)}</section>` +
     `<div class="panel wide-panel"><div class="list-heading"><span>事件与来源</span><span>变化量</span><span>观察时间</span></div>${rows ? `<ul class="row-list alert-list">${rows}</ul>` : empty('没有符合条件的提醒', '可调整筛选，或等待配置的监控规则捕获新的可比变化。')}</div>`;
@@ -139,7 +197,7 @@ function alertDetail(id) {
   openDetail(detailHead(`${names[a.market] || a.market} · 待核验`, a.label) +
     `<div class="detail-measure"><div><span>前次有效读数</span><strong>${number(a.before, a.unit)}</strong></div><div><span>本次读数</span><strong>${number(a.after, a.unit)}</strong></div></div>` +
     `<section class="detail-section"><h3>变化计算</h3><dl class="fact-list"><dt>绝对变化</dt><dd>${signed(a.difference, a.unit)}</dd><dt>相对变化</dt><dd>${signed(a.percent, '%')}</dd><dt>触发阈值</dt><dd>${thresholds}</dd><dt>公式</dt><dd>${escapeHtml(a.formula)}</dd><dt>前次时点</dt><dd>${fullTime(a.beforeAsOf)}</dd><dt>本次时点</dt><dd>${fullTime(a.asOf)}</dd></dl></section>` +
-    `<section class="detail-section"><h3>证据定位</h3><dl class="fact-list"><dt>运行 ID</dt><dd class="inline-code">${escapeHtml(a.runId)}</dd><dt>提醒 ID</dt><dd class="inline-code">${escapeHtml(a.id)}</dd><dt>来源</dt><dd>${escapeHtml(a.sourceId)}</dd><dt>来源网址</dt><dd>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.sourceUrl)}</a>` : '未提供公开网址'}</dd><dt>研究状态</dt><dd>待核验；尚无投资结论</dd></dl></section>`);
+    `<section class="detail-section"><h3>证据定位</h3><dl class="fact-list"><dt>运行 ID</dt><dd class="inline-code">${escapeHtml(a.runId)}</dd><dt>提醒 ID</dt><dd class="inline-code">${escapeHtml(a.id)}</dd><dt>来源</dt><dd>${escapeHtml(a.sourceId)}</dd><dt>来源网址</dt><dd>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.sourceUrl)}</a>` : '未提供公开网址'}</dd><dt>研究状态</dt><dd>待核验；尚无投资结论</dd></dl>${a.assetId && assetName(a.assetId) ? `<a class="asset-context-link" href="#asset/${escAttr(a.assetId)}">查看${escapeHtml(assetName(a.assetId))}的标的页</a>` : ''}</section>`);
 }
 function runDetail(id) {
   const r = state.runs.find(item => item.runId === id);
@@ -172,6 +230,7 @@ function trendSvg(points, unit = '') {
 function marketDetail(id) {
   const data = state.markets[id];
   if (!data) return;
+  const marketAssets = (state.assets || []).filter(asset => asset.market === id);
   const current = data.observations[0];
   const source = state.latest?.sources?.find(s => s.id === current?.sourceId) || state.latest?.sources?.find(s => s.market === id);
   const metricId = current?.metricId;
@@ -180,7 +239,8 @@ function marketDetail(id) {
   openDetail(detailHead(names[id], '市场证据') +
     `<div class="detail-measure"><div><span>本轮状态</span><strong class="status-value">${statusNames[data.status] || '无数据'}</strong></div><div><span>最新有效值</span><strong>${current ? number(current.value, current.unit) : '—'}</strong></div></div>` +
     `<section class="detail-section"><h3>指标趋势</h3>${trendSvg(points, current?.unit || '')}<p class="section-note">同一来源、同一指标的已归档观察；无可比记录时不绘制趋势。</p></section>` +
-    `<section class="detail-section"><h3>来源与时间</h3><dl class="fact-list"><dt>指标</dt><dd>${current ? escapeHtml(current.label) : '未接入或本轮无有效值'}</dd><dt>观察时间</dt><dd>${current ? fullTime(current.asOf) : '—'}</dd><dt>采集时间</dt><dd>${current ? fullTime(current.fetchedAt) : '—'}</dd><dt>来源</dt><dd>${source ? escapeHtml(source.id) : '—'}</dd><dt>来源网址</dt><dd>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.sourceUrl)}</a>` : '未提供公开网址'}</dd></dl></section>`);
+    `<section class="detail-section"><h3>来源与时间</h3><dl class="fact-list"><dt>指标</dt><dd>${current ? escapeHtml(current.label) : '未接入或本轮无有效值'}</dd><dt>观察时间</dt><dd>${current ? fullTime(current.asOf) : '—'}</dd><dt>采集时间</dt><dd>${current ? fullTime(current.fetchedAt) : '—'}</dd><dt>来源</dt><dd>${source ? escapeHtml(source.id) : '—'}</dd><dt>来源网址</dt><dd>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.sourceUrl)}</a>` : '未提供公开网址'}</dd></dl></section>` +
+    `<section class="detail-section"><h3>该市场的标的</h3>${marketAssets.length ? marketAssets.map(asset => `<a class="asset-context-link" href="#asset/${escAttr(asset.id)}">${escapeHtml(asset.symbol)} · ${escapeHtml(asset.name)}</a>`).join('') : '<p class="section-note">当前没有配置标的。</p>'}</section>`);
 }
 
 function decisionDetail(id) {
@@ -193,14 +253,16 @@ function decisionDetail(id) {
     `<div class="detail-measure"><div><span>本轮结论</span><strong class="status-value">${escapeHtml(d.verdict)}</strong></div><div><span>适用价格</span><strong>${number(d.price, d.currency || '')}</strong></div></div>` +
     `<section class="detail-section"><h3>判断范围</h3><dl class="fact-list"><dt>研究时间</dt><dd>${fullTime(d.asOf)}</dd><dt>研究期限</dt><dd>${escapeHtml(d.horizon || '未注明')}</dd><dt>复核日期</dt><dd>${d.reviewAt ? fullTime(d.reviewAt) : '未设定'}</dd><dt>复核状态</dt><dd>${d.verifiedAt ? `已复核 · ${fullTime(d.verifiedAt)}` : '待复核'}</dd></dl></section>` +
     `<section class="detail-section"><h3>依据与反证</h3><dl class="fact-list"><dt>核心依据</dt><dd>${escapeHtml(d.thesis || '未提供')}</dd><dt>最强反证</dt><dd>${escapeHtml(d.counterEvidence || '未提供')}</dd><dt>证伪条件</dt><dd>${escapeHtml(d.invalidatedBy || '未提供')}</dd></dl></section>` +
-    `<section class="detail-section"><h3>证据关联</h3><dl class="fact-list"><dt>判断 ID</dt><dd class="inline-code">${escapeHtml(d.id)}</dd><dt>运行档案</dt><dd>${evidence || '未关联运行'}</dd></dl></section>`);
+    `<section class="detail-section"><h3>证据关联</h3><dl class="fact-list"><dt>判断 ID</dt><dd class="inline-code">${escapeHtml(d.id)}</dd><dt>运行档案</dt><dd>${evidence || '未关联运行'}</dd></dl>${d.assetId && assetName(d.assetId) ? `<a class="asset-context-link" href="#asset/${escAttr(d.assetId)}">查看${escapeHtml(assetName(d.assetId))}的标的页</a>` : ''}</section>`);
 }
 
 function render() {
   if (!state) return;
   const section = nav();
   document.querySelectorAll('[data-nav]').forEach(a => a.setAttribute('aria-current', a.dataset.nav === section ? 'page' : 'false'));
-  app.innerHTML = ({ overview, alerts: alertsPage, decisions: decisionsPage, runs: runsPage, about: aboutPage })[section]();
+  app.innerHTML = location.hash.startsWith('#asset/') ? assetPage(location.hash.slice(7)) :
+    ({ overview, assets: assetsPage, alerts: alertsPage, decisions: decisionsPage, runs: runsPage, about: aboutPage })[section]();
+  if (section === 'assets' && !location.hash.startsWith('#asset/')) applyAssetFilters();
 }
 async function load() {
   try {
@@ -232,9 +294,13 @@ document.addEventListener('keydown', event => {
   }
 });
 document.addEventListener('change', event => {
+  if (event.target.id === 'asset-market-filter') { assetMarketFilter = event.target.value; applyAssetFilters(); return; }
   if (event.target.id === 'market-filter') marketFilter = event.target.value;
   if (event.target.id === 'severity-filter') severityFilter = event.target.value;
   if (event.target.id === 'market-filter' || event.target.id === 'severity-filter') render();
+});
+document.addEventListener('input', event => {
+  if (event.target.id === 'asset-search') { assetQuery = event.target.value; applyAssetFilters(); }
 });
 document.querySelector('#theme-toggle').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';

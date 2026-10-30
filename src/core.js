@@ -28,6 +28,15 @@ export async function readConfig() {
   try { config = JSON.parse(await fs.readFile(file, 'utf8')); }
   catch { throw new Error('Configuration file could not be read or parsed'); }
   if (config.version !== 1 || !Array.isArray(config.sources)) throw new Error('Invalid config version or sources');
+  if (config.assets != null && !Array.isArray(config.assets)) throw new Error('Invalid assets');
+  const assets = new Map();
+  for (const asset of config.assets || []) {
+    if (!/^[a-z0-9-]+$/.test(asset.id || '') || assets.has(asset.id) ||
+        !markets.includes(asset.market) || typeof asset.name !== 'string' || !asset.name.trim() ||
+        typeof asset.symbol !== 'string' || !asset.symbol.trim() ||
+        (asset.exchange != null && typeof asset.exchange !== 'string')) throw new Error('Invalid or duplicate asset');
+    assets.set(asset.id, asset);
+  }
   const ids = new Set();
   for (const source of config.sources) {
     if (!/^[a-z0-9-]+$/.test(source.id) || ids.has(source.id)) throw new Error('Invalid or duplicate source ID');
@@ -35,8 +44,13 @@ export async function readConfig() {
     if (!markets.includes(source.market) || !['http-json', 'command'].includes(source.kind)) throw new Error(`Invalid source ${source.id}`);
     if (!Array.isArray(source.metrics)) throw new Error(`Missing metrics in ${source.id}`);
     if (source.metrics.length && !(source.maxAgeMinutes > 0)) throw new Error(`Source ${source.id} needs maxAgeMinutes`);
+    const metricIds = new Set();
     for (const metric of source.metrics) {
       if (!/^[a-z0-9-]+$/.test(metric.id) || !metric.path || !metric.unit) throw new Error(`Invalid metric in ${source.id}`);
+      if (metricIds.has(metric.id)) throw new Error(`Duplicate metric in ${source.id}`);
+      metricIds.add(metric.id);
+      if (metric.assetId && (!assets.has(metric.assetId) || assets.get(metric.assetId).market !== source.market)) throw new Error(`Invalid asset in ${source.id}`);
+      if (metric.role && (!metric.assetId || !['price', 'metric'].includes(metric.role))) throw new Error(`Invalid metric role in ${source.id}`);
       if (metric.alertPercent != null && !(metric.alertPercent > 0)) throw new Error(`Invalid threshold in ${source.id}`);
       if (metric.alertAbsolute != null && !(metric.alertAbsolute > 0)) throw new Error(`Invalid threshold in ${source.id}`);
     }
@@ -91,6 +105,7 @@ export function extract(source, body, fetchedAt) {
     const ageMinutes = (Date.parse(fetchedAt) - Date.parse(asOf)) / 60000;
     const quality = source.maxAgeMinutes && (ageMinutes > source.maxAgeMinutes || ageMinutes < -5) ? 'stale' : 'valid';
     observations.push({ market: source.market, sourceId: source.id, metricId: metric.id,
+      assetId: metric.assetId || null, role: metric.role || null,
       label: metric.label || metric.id, value, unit: metric.unit, asOf, fetchedAt, quality });
   }
   return observations;
@@ -127,6 +142,7 @@ export async function readDecisions(root = dataDir()) {
           (item.verifiedAt && (typeof item.verifiedAt !== 'string' || Number.isNaN(Date.parse(item.verifiedAt))))) throw new Error('Invalid decision');
       // Explicitly allowlist browser-visible fields. Private exports may carry account data.
       items.push({ id: String(item.id), market: item.market, asset: String(item.asset),
+        assetId: /^[a-z0-9-]+$/.test(item.assetId || '') ? item.assetId : null,
         verdict: String(item.verdict), asOf: item.asOf,
         price: typeof item.price === 'number' && Number.isFinite(item.price) ? item.price : null,
         currency: item.currency ? String(item.currency) : null,
@@ -142,21 +158,50 @@ export async function readDecisions(root = dataDir()) {
   return { items: items.slice(0, 100), error };
 }
 
+export async function readDocuments(root = dataDir()) {
+  let content;
+  try { content = await fs.readFile(path.join(root, 'documents.jsonl'), 'utf8'); }
+  catch (error) { return { items: [], error: error.code !== 'ENOENT' }; }
+  const items = [];
+  let error = false;
+  for (const line of content.split('\n').filter(Boolean)) {
+    try {
+      const item = JSON.parse(line);
+      if (!/^[a-z0-9-]+$/.test(item.id || '') || !/^[a-z0-9-]+$/.test(item.assetId || '') ||
+          !['research', 'filing', 'earnings', 'call', 'other'].includes(item.kind) ||
+          typeof item.title !== 'string' || !item.title.trim() ||
+          typeof item.asOf !== 'string' || Number.isNaN(Date.parse(item.asOf)) ||
+          typeof item.sourceId !== 'string' || !item.sourceId.trim()) throw new Error('Invalid document');
+      let sourceUrl = null;
+      if (item.sourceUrl) {
+        const candidate = new URL(item.sourceUrl);
+        if (candidate.protocol !== 'https:' || candidate.username || candidate.password || candidate.search) throw new Error('Invalid document URL');
+        candidate.hash = '';
+        sourceUrl = candidate.toString();
+      }
+      items.push({ id: item.id, assetId: item.assetId, kind: item.kind, title: item.title,
+        asOf: item.asOf, sourceId: item.sourceId, sourceUrl });
+    } catch { error = true; }
+  }
+  items.sort((a, b) => b.asOf.localeCompare(a.asOf));
+  return { items: items.slice(0, 200), error };
+}
+
 export function compare(current, previous, source, existingAlertIds = new Set()) {
   const alerts = [];
   for (const item of current) {
     const metric = source.metrics.find(m => m.id === item.metricId);
     if (item.quality === 'stale') continue;
-    const old = previous.find(p => p.sourceId === item.sourceId && p.metricId === item.metricId && p.unit === item.unit && p.quality !== 'stale');
+    const old = previous.find(p => p.sourceId === item.sourceId && p.metricId === item.metricId && p.unit === item.unit && (p.assetId || null) === (item.assetId || null) && p.quality !== 'stale');
     if (!old || old.asOf >= item.asOf) continue;
     const difference = item.value - old.value;
     const percent = old.value === 0 ? null : difference / Math.abs(old.value) * 100;
     const hit = (metric.alertAbsolute != null && Math.abs(difference) >= metric.alertAbsolute) ||
       (metric.alertPercent != null && percent != null && Math.abs(percent) >= metric.alertPercent);
     if (!hit) continue;
-    const id = crypto.createHash('sha256').update(`${source.id}|${metric.id}|${item.asOf}|${item.value}|${old.asOf}`).digest('hex').slice(0, 16);
+    const id = crypto.createHash('sha256').update(`${source.id}|${metric.id}|${item.asOf}|${item.value}|${old.asOf}${item.assetId ? `|${item.assetId}` : ''}`).digest('hex').slice(0, 16);
     if (existingAlertIds.has(id)) continue;
-    alerts.push({ id, market: item.market, sourceId: source.id, metricId: item.metricId,
+    alerts.push({ id, market: item.market, assetId: item.assetId || null, sourceId: source.id, metricId: item.metricId,
       label: item.label, before: old.value, after: item.value, unit: item.unit, difference, percent,
       beforeAsOf: old.asOf, asOf: item.asOf, severity: 'review', status: 'unverified',
       thresholds: { absolute: metric.alertAbsolute ?? null, percent: metric.alertPercent ?? null },
@@ -208,6 +253,7 @@ export async function collect(root = dataDir(), config) {
   for (const source of config.sources) {
     const definition = { kind: source.kind, maxAgeMinutes: source.maxAgeMinutes || null,
       metrics: source.metrics.map(metric => ({ id: metric.id, label: metric.label || metric.id,
+        assetId: metric.assetId || null, role: metric.role || null,
         path: metric.path, asOfPath: metric.asOfPath || null, unit: metric.unit,
         alertAbsolute: metric.alertAbsolute ?? null, alertPercent: metric.alertPercent ?? null })) };
     if (source.kind === 'http-json' && !process.env[source.urlEnv]) {
@@ -240,6 +286,7 @@ export async function collect(root = dataDir(), config) {
     }
   }
   const run = { schemaVersion: 1, runId, startedAt, finishedAt: new Date().toISOString(),
+    assets: (config.assets || []).map(asset => ({ id: asset.id, market: asset.market, symbol: asset.symbol, name: asset.name, exchange: asset.exchange || null })),
     observations, alerts, sources };
   const runsPath = path.join(root, 'runs');
   await fs.mkdir(runsPath, { recursive: true, mode: 0o700 });
@@ -277,18 +324,30 @@ export async function retryNotifications(root = dataDir()) {
 export async function dashboardState(root = dataDir()) {
   const runs = await readRuns(root, 50);
   const decisions = await readDecisions(root);
+  const documents = await readDocuments(root);
   const latest = runs[0] || null;
   const latestByMarket = Object.fromEntries(markets.map(market => {
-    const observation = runs.flatMap(r => r.observations || []).find(o => o.market === market && o.quality !== 'stale');
-    const sources = latest?.sources?.filter(s => s.market === market) || [];
-    const status = ['ok', 'stale', 'failed', 'missing', 'unconfigured'].find(candidate => sources.some(s => s.status === candidate)) || 'unconfigured';
+    const sources = latest?.sources?.filter(s => s.market === market && (!s.definition?.metrics?.length || s.definition.metrics.some(metric => !metric.assetId))) || [];
     const validSourceIds = new Set(sources.filter(s => s.status === 'ok').map(s => s.id));
-    return [market, { status, observation: observation || null,
-      observations: latest?.observations?.filter(o => o.market === market && o.quality !== 'stale' && validSourceIds.has(o.sourceId)) || [] }];
+    const observations = latest?.observations?.filter(o => o.market === market && !o.assetId && o.quality !== 'stale' && validSourceIds.has(o.sourceId)) || [];
+    const status = observations.length ? 'ok' : ['failed', 'stale', 'missing'].find(candidate => sources.some(s => s.status === candidate)) || (sources.some(s => s.status === 'ok') ? 'missing' : 'unconfigured');
+    return [market, { status, observation: observations[0] || null, observations }];
   }));
+  const assets = (latest?.assets || []).map(asset => {
+    const linkedSources = latest.sources.filter(source => source.market === asset.market && source.definition?.metrics?.some(metric => metric.assetId === asset.id));
+    const validSourceIds = new Set(linkedSources.filter(source => source.status === 'ok').map(source => source.id));
+    const observations = latest.observations.filter(o => o.assetId === asset.id && o.quality !== 'stale' && validSourceIds.has(o.sourceId));
+    const status = observations.length ? 'ok' : ['failed', 'stale', 'missing'].find(candidate => linkedSources.some(source => source.status === candidate)) || (linkedSources.some(source => source.status === 'ok') ? 'missing' : 'unconfigured');
+    return { ...asset, status, observations };
+  });
+  const assetMarkets = new Map(assets.map(asset => [asset.id, asset.market]));
+  const linkedDecisions = decisions.items.map(item => ({ ...item,
+    assetId: item.assetId && assetMarkets.get(item.assetId) === item.market ? item.assetId : null }));
+  const linkedDocuments = documents.items.filter(item => assetMarkets.has(item.assetId));
   return { generatedAt: new Date().toISOString(), latest, markets: latestByMarket,
+    assets, documents: linkedDocuments, documentError: documents.error || linkedDocuments.length !== documents.items.length,
     alerts: runs.flatMap(r => (r.alerts || []).map(a => ({ ...a, runId: r.runId }))).slice(0, 100),
-    decisions: decisions.items, decisionError: decisions.error,
+    decisions: linkedDecisions, decisionError: decisions.error,
     runs: runs.map(r => ({ runId: r.runId, startedAt: r.startedAt, finishedAt: r.finishedAt,
       sources: r.sources, observations: r.observations, observationCount: r.observations.length, alertCount: r.alerts.length })) };
 }

@@ -13,6 +13,8 @@ The current interface was refined from the [first desktop layout](docs/screensho
 | Desktop | Phone |
 | --- | --- |
 | ![Synthetic sample dashboard at desktop width](docs/screenshots/overview-desktop-sample.jpg) | ![Synthetic sample dashboard at phone width](docs/screenshots/overview-mobile-sample.jpg) |
+| ![Synthetic asset directory at desktop width](docs/screenshots/assets-desktop-light-sample.jpg) | ![Synthetic asset directory at phone width](docs/screenshots/assets-mobile-light-sample.jpg) |
+| ![Synthetic US asset detail with document metadata at desktop width](docs/screenshots/asset-us-detail-desktop-light-sample.jpg) | ![Synthetic US asset detail with document metadata at phone width](docs/screenshots/asset-us-detail-mobile-light-sample.jpg) |
 | ![Synthetic research decision ledger at desktop width](docs/screenshots/decisions-desktop-sample.jpg) | ![Synthetic research decision ledger at phone width](docs/screenshots/decisions-mobile-sample.jpg) |
 
 ## Quick start
@@ -70,6 +72,29 @@ The example config intentionally leaves A shares, Hong Kong, and US metrics empt
 
 For a local script, place a `.mjs` file in `scripts/monitors/` and configure `kind: "command"` with its filename in `command`. It must print one JSON object to stdout; `metrics[].path` reads fields from that object. Scripts are trusted operator code, read only from configuration at process start. The web server never executes them. Use environment variables for script credentials and avoid printing credentials to stdout or stderr.
 
+## Specific assets
+
+The **标的** directory sits beneath the four-market overview. Each configured asset has a page for its latest valid quote, a same-source price trend, other sampled metrics, factual alerts, linked research decisions, and document metadata. Market snapshots and asset quotes are distinct: an individual quote never becomes a market-wide number.
+
+Add assets to the private config and associate individual metrics by stable `assetId`. For example, add this entry to `assets` and these fields to a source metric in the same market:
+
+```json
+{
+  "assets": [{ "id": "example-us", "market": "us", "symbol": "EXM", "name": "Example Company", "exchange": "Example venue" }],
+  "metric": { "id": "price", "assetId": "example-us", "role": "price", "label": "Reference quote", "path": "data.price", "asOfPath": "data.as_of", "unit": "USD", "alertPercent": 8 }
+}
+```
+
+The snippet shows fields to merge into the normal config; it is not a complete monitor config. `role: "price"` supplies the headline quote. Other asset metrics may use `role: "metric"` or omit the role. The monitor archives only configured sampled values; it does not ingest a full-market price feed. A stale, failed, or unconfigured source leaves the current quote blank and retains its status.
+
+The optional private `DATA_DIR/documents.jsonl` is a read-only metadata index for research reports, filings, financial statements, and call notes. Each line has `id`, `assetId`, `kind` (`research`, `filing`, `earnings`, `call`, or `other`), `title`, `asOf`, `sourceId`, and an optional stable HTTPS `sourceUrl` without credential query parameters. Example:
+
+```json
+{"id":"doc-001","assetId":"example-us","kind":"filing","title":"Example filing","asOf":"2026-01-07T12:00:00Z","sourceId":"issuer-site","sourceUrl":"https://example.com/filing"}
+```
+
+This indexes source and date; it does not upload, OCR, host, or expose private report files. Keep those files outside Git and behind the authenticated deployment. A decision links to its asset page when its private export includes the matching `assetId`.
+
 ## Archive and notifications
 
 Each run is written to `DATA_DIR/runs/<run-id>/run.json` through an atomic rename. A failed or missing source is recorded, and a stale value never becomes a new alert. The archive records each metric's field mapping, unit and threshold so an old alert remains explainable after configuration changes. It keeps only configured observations and source metadata, not raw third-party payloads or full-market intraday prices. It never stores a URL's query string or HTTP authorization header. Notification delivery results are separate files in `DATA_DIR/`; a failed notification does not change the immutable observation run.
@@ -83,7 +108,7 @@ If delivery fails, run `node src/cli.js retry` to retry channels without a recor
 A private research process can export one JSON object per line to `DATA_DIR/decisions.jsonl`. The dashboard reads it but never writes judgments. Keep this file outside the Git repository or inside the ignored `data/` directory. An example record shape:
 
 ```json
-{"id":"research-001","market":"crypto","asset":"Example Asset","verdict":"insufficient evidence","asOf":"2026-01-07T12:00:00Z","price":null,"currency":"USD","horizon":"30 days","thesis":"Evidence to check","counterEvidence":"Strongest contrary observation","invalidatedBy":"Condition that would reverse this view","reviewAt":"2026-02-07T12:00:00Z","evidenceRunIds":["run-id-from-archive"]}
+{"id":"research-001","market":"us","assetId":"example-us","asset":"Example Company","verdict":"insufficient evidence","asOf":"2026-01-07T12:00:00Z","price":null,"currency":"USD","horizon":"30 days","thesis":"Evidence to check","counterEvidence":"Strongest contrary observation","invalidatedBy":"Condition that would reverse this view","reviewAt":"2026-02-07T12:00:00Z","evidenceRunIds":["run-id-from-archive"]}
 ```
 
 `market` is one of `a-share`, `hong-kong`, `us`, or `crypto`. `reviewAt` marks an item as due once that time passes; `verifiedAt` marks a completed review. Preserve revisions as separate records with new IDs rather than overwriting an old judgment. This format is an import contract, not an alternative write path for an existing private research ledger.
