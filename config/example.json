@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "crypto-overview",
+      "market": "crypto",
+      "kind": "http-json",
+      "urlEnv": "CRYPTO_MARKET_API_URL",
+      "maxAgeMinutes": 180,
+      "headers": { "Authorization": "Bearer ${MARKET_API_TOKEN}" },
+      "metrics": [
+        { "id": "market-cap", "label": "Total market cap", "path": "data.total_market_cap.usd", "unit": "USD", "asOfPath": "data.updated_at", "alertPercent": 5 },
+        { "id": "btc-dominance", "label": "BTC dominance", "path": "data.market_cap_percentage.btc", "unit": "%", "asOfPath": "data.updated_at", "alertAbsolute": 2 }
+      ]
+    },
+    {
+      "id": "a-share-overview",
+      "market": "a-share",
+      "kind": "http-json",
+      "urlEnv": "CN_MARKET_API_URL",
+      "metrics": []
+    },
+    {
+      "id": "hong-kong-overview",
+      "market": "hong-kong",
+      "kind": "http-json",
+      "urlEnv": "HK_MARKET_API_URL",
+      "metrics": []
+    },
+    {
+      "id": "us-overview",
+      "market": "us",
+      "kind": "http-json",
+      "urlEnv": "US_MARKET_API_URL",
+      "metrics": []
+    }
+  ]
+}

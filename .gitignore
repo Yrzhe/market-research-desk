@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+config/local.json
+data/
+runtime/
+node_modules/
+.taste-skill/
+.DS_Store
+*.log
+*.db
+*.sqlite*

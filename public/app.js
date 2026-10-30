@@ -1,0 +1,199 @@
+const names = { 'a-share': 'A 股', 'hong-kong': '港股', us: '美股', crypto: '加密资产' };
+const statusNames = { ok: '已更新', unconfigured: '未接入', missing: '字段缺失', failed: '采集失败', stale: '数据过期' };
+const app = document.querySelector('#app');
+const detailLayer = document.querySelector('#detail-layer');
+let state;
+let marketFilter = 'all';
+let severityFilter = 'all';
+let lastFocus = null;
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function safeUrl(value) {
+  try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) ? escapeHtml(url.href) : null; }
+  catch { return null; }
+}
+function dateTime(value) {
+  if (!value || Number.isNaN(Date.parse(value))) return '—';
+  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(value));
+}
+function fullTime(value) {
+  if (!value || Number.isNaN(Date.parse(value))) return '—';
+  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' }).format(new Date(value));
+}
+function number(value, unit = '') {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  const digits = unit === '%' ? 2 : Math.abs(value) >= 1000 ? 0 : 2;
+  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: digits }).format(value)}${unit === '%' ? '%' : unit ? ` ${escapeHtml(unit)}` : ''}`;
+}
+function signed(value, unit = '') {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return `${value > 0 ? '+' : ''}${number(value, unit)}`;
+}
+function escAttr(value) { return escapeHtml(value); }
+function nav() { return ['overview', 'alerts', 'runs', 'about'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; }
+function pageHead(title, subtitle) {
+  return `<header class="page-head"><div><p class="eyebrow">四市场研究工作台 ${new URLSearchParams(location.search).has('sample') ? '<span class="sample-flag">合成示例数据</span>' : ''}</p><h1 class="page-title">${title}</h1><p class="page-subtitle">${subtitle}</p></div><div class="head-meta">看板读取时间<strong>${fullTime(state.generatedAt)}</strong></div></header>`;
+}
+function sectionHead(title, note, link = '') {
+  return `<div class="section-head"><div><h2 class="section-title">${title}</h2><p class="section-note">${note}</p></div>${link}</div>`;
+}
+function empty(title, text) { return `<div class="empty-state"><strong>${title}</strong><p>${text}</p></div>`; }
+
+function overview() {
+  const marketEntries = Object.entries(state.markets);
+  const covered = marketEntries.filter(([, data]) => data.status === 'ok' && data.observations.length).length;
+  const rail = marketEntries.map(([id, data]) => {
+    const current = data.observations[0];
+    const observation = data.observation;
+    const stale = !current && observation;
+    return `<button class="market-cell" type="button" data-market="${escAttr(id)}" aria-label="查看${names[id]}证据">
+      <span class="market-top"><span class="status-mark ${escAttr(data.status)}"></span><span class="market-label">${names[id]}</span></span>
+      <span class="market-value ${current ? '' : 'empty'}">${current ? number(current.value, current.unit) : '—'}</span>
+      <span class="market-caption">${current ? escapeHtml(current.label) : statusNames[data.status] || '无数据'}${stale ? ' · 上次有效值仅供历史查阅' : ''}</span>
+      <span class="market-time">${current ? dateTime(current.asOf) : stale ? `上次 ${dateTime(observation.asOf)}` : '尚无有效观察'}</span>
+    </button>`;
+  }).join('');
+  const alerts = state.alerts.slice(0, 4);
+  const alertRows = alerts.map(a => `<li><button class="data-row" type="button" data-alert="${escAttr(a.id)}"><span><span class="row-title">${escapeHtml(a.label)}</span><span class="row-sub">${names[a.market] || escapeHtml(a.market)} · 待核验 · ${escapeHtml(a.sourceId)}</span></span><span class="row-right"><span class="delta ${a.difference < 0 ? 'negative' : 'positive'}">${signed(a.percent, '%')}</span><span class="row-date">${dateTime(a.asOf)}</span></span></button></li>`).join('');
+  const primaryAlert = alerts[0];
+  const contextPoints = primaryAlert ? state.runs.map(r => r.observations?.find(o => o.sourceId === primaryAlert.sourceId && o.metricId === primaryAlert.metricId)).filter(Boolean).reverse() : [];
+  const alertContext = contextPoints.length >= 2 ? `<div class="trend-snippet"><div class="trend-caption"><strong>${escapeHtml(primaryAlert.label)} · 最近 ${contextPoints.length} 次观察</strong><span>变化的量级，点击提醒查看公式</span></div>${trendSvg(contextPoints)}</div>` : '';
+  const sourceRows = state.latest?.sources?.map(s => `<div class="health-item"><span class="source-name">${names[s.market] || escapeHtml(s.market)} <span class="row-sub">${escapeHtml(s.id)}</span></span><span class="source-state ${escAttr(s.status)}">${statusNames[s.status] || escapeHtml(s.status)}</span></div>`).join('') || '';
+  const matrix = marketEntries.map(([id, data]) => {
+    const o = data.observations[0];
+    return `<tr><td class="market-name">${names[id]}</td><td class="muted">${o ? escapeHtml(o.label) : statusNames[data.status] || '无数据'}</td><td class="number">${o ? number(o.value, o.unit) : '—'}</td><td class="muted">${o ? dateTime(o.asOf) : '—'}</td><td class="view-cell"><button class="text-button" type="button" data-market="${escAttr(id)}">查看证据</button></td></tr>`;
+  }).join('');
+  return pageHead('市场监测', '按各市场自己的数据时点查看变化。程序只生成观察与待核验事项，研究判断另行记录。') +
+    `<section class="panel coverage-panel" aria-label="四市场覆盖"><div class="coverage-intro"><strong>本轮有效覆盖</strong><span class="coverage-count">${covered} / 4 个市场</span></div><div class="coverage-grid">${rail}</div></section>` +
+    `<div class="work-grid"><section>${sectionHead('需要核验', '达到配置阈值的事实变化，尚不是投资结论', '<a class="section-link" href="#alerts">查看全部</a>')}<div class="panel">${alerts.length ? `<ul class="row-list">${alertRows}</ul>${alertContext}` : empty('没有待核验提醒', '运行监控后，命中阈值且有可比历史值的变化会出现在这里。')}</div></section>` +
+    `<section>${sectionHead('自动运行', '最近一次监控的来源状态', '<a class="section-link" href="#runs">运行档案</a>')}<div class="panel">${sourceRows ? `<div class="panel-head"><span class="section-title">${dateTime(state.latest.startedAt)} · 运行 ${escapeHtml(state.latest.runId.slice(-6))}</span></div><div class="health-list">${sourceRows}</div>` : empty('等待首次运行', '用配置文件接入来源，并在服务器执行监控命令。')}</div></section></div>` +
+    `<section>${sectionHead('市场截面', '数值、单位与观察时间来自最近一轮有效记录')}<div class="panel matrix-panel"><div class="table-wrap"><table class="matrix"><thead><tr><th>市场</th><th>观察指标</th><th>最新值</th><th>观察时间</th><th></th></tr></thead><tbody>${matrix}</tbody></table></div></div><div class="below-note"><span><i class="line-mark"></i> 有效覆盖</span><span>失效来源不沿用旧值触发提醒</span><span>点击市场查看历史与来源</span></div></section>`;
+}
+
+function alertsPage() {
+  const visible = state.alerts.filter(a => (marketFilter === 'all' || a.market === marketFilter) && (severityFilter === 'all' || a.severity === severityFilter));
+  const rows = visible.map(a => `<li><button class="data-row" type="button" data-alert="${escAttr(a.id)}"><span><span class="row-title">${escapeHtml(a.label)}</span><span class="row-sub">${names[a.market] || escapeHtml(a.market)} · ${escapeHtml(a.sourceId)} · ${escapeHtml(a.status)}</span></span><span class="delta ${a.difference < 0 ? 'negative' : 'positive'}">${signed(a.difference, a.unit)}</span><span class="row-date">${dateTime(a.asOf)}</span></button></li>`).join('');
+  return pageHead('待核验', '每条变化都保留前后读数、公式和来源。提醒只负责把问题排进研究队列。') +
+    `<section>${sectionHead('观察队列', `${visible.length} 条符合筛选条件`, `<div class="filters"><label><span class="sr-only">市场</span><select id="market-filter" class="filter-select"><option value="all">全部市场</option>${Object.entries(names).map(([id,name]) => `<option value="${id}" ${marketFilter === id ? 'selected' : ''}>${name}</option>`).join('')}</select></label><label><span class="sr-only">严重度</span><select id="severity-filter" class="filter-select"><option value="all">全部状态</option><option value="review" ${severityFilter === 'review' ? 'selected' : ''}>待核验</option></select></label></div>`)}</section>` +
+    `<div class="panel wide-panel"><div class="list-heading"><span>事件与来源</span><span>变化量</span><span>观察时间</span></div>${rows ? `<ul class="row-list alert-list">${rows}</ul>` : empty('没有符合条件的提醒', '可调整筛选，或等待配置的监控规则捕获新的可比变化。')}</div>`;
+}
+
+function runsPage() {
+  const totalObs = state.runs.reduce((sum, r) => sum + r.observationCount, 0);
+  const rows = state.runs.map(r => `<li><button class="data-row" type="button" data-run="${escAttr(r.runId)}"><span><span class="row-title">监控运行 · ${dateTime(r.startedAt)}</span><span class="row-sub">ID ${escapeHtml(r.runId.slice(-6))} · ${r.observationCount} 条观察 · ${r.alertCount} 条提醒 · ${r.sources.filter(s => s.status === 'failed').length} 个来源失败</span></span><span class="row-date">查看证据</span></button></li>`).join('');
+  return pageHead('运行档案', '每次监控生成独立、不可覆盖的事实记录；缺失与失败也会保留。') +
+    `<section class="panel wide-panel"><div class="summary-strip"><div><strong>${state.runs.length}</strong><span>最近归档轮次</span></div><div><strong>${totalObs}</strong><span>其中观察值</span></div><div><strong>${state.alerts.length}</strong><span>其中待核验事件</span></div></div>${rows ? `<ul class="row-list run-list">${rows}</ul>` : empty('尚无运行档案', '在服务器执行 npm run monitor，即可产生第一份带时间的事实记录。')}</section>`;
+}
+
+function aboutPage() {
+  return pageHead('配置说明', '公开仓库只提供程序。真实数据源、通知目标、运行档案与研究判断都由部署者私下配置。') +
+    `<div class="about-grid"><section class="panel about-card"><h2>接入来源</h2><p>复制示例配置到私有的 <code>config/local.json</code>，按市场添加 HTTPS JSON API 或本地脚本。每个指标指定 JSON 字段、单位、观察时间及可选变化阈值。</p><ul><li>API 地址由环境变量提供</li><li>授权信息写进环境变量，不进仓库</li><li>脚本只从 <code>scripts/monitors/</code> 执行</li></ul></section><section class="panel about-card"><h2>自动运行</h2><p>在 VPS 使用系统定时器调用同一个监控命令。加密资产可按 UTC 时点采样；股票应安排在各自市场完整收盘之后。</p><p>Telegram 和 webhook 为可选的出站提醒，未配置时不会发送。</p></section><section class="panel about-card"><h2>证据与判断</h2><p>本程序负责采集、比较与提醒。是否值得持有，需要另行核对披露、估值、反证和期限，并通过独立研究流程记录。</p><p>页面只读；没有下单、自动买卖或网页执行脚本的入口。</p></section><section class="panel about-card"><h2>访问边界</h2><p>网页默认只监听本机。要通过 Cloudflare Tunnel 访问，先为域名设置 Access 身份验证，并保持服务只监听 <code>127.0.0.1</code>。</p><p>公开仓库不包含任何真实运行包或个人账户信息。</p></section></div>`;
+}
+
+function openDetail(html) {
+  lastFocus = document.activeElement;
+  detailLayer.innerHTML = `<div class="detail-panel" role="dialog" aria-modal="true" aria-label="证据详情">${html}</div>`;
+  detailLayer.hidden = false;
+  document.body.classList.add('has-detail');
+  detailLayer.querySelector('.close-button')?.focus();
+}
+function closeDetail() {
+  detailLayer.hidden = true;
+  detailLayer.innerHTML = '';
+  document.body.classList.remove('has-detail');
+  lastFocus?.focus();
+}
+function detailHead(kicker, title) {
+  return `<div class="detail-head"><div><div class="detail-kicker">${escapeHtml(kicker)}</div><h2>${escapeHtml(title)}</h2></div><button class="close-button" type="button" data-close aria-label="关闭详情">×</button></div>`;
+}
+function alertDetail(id) {
+  const a = state.alerts.find(item => item.id === id);
+  if (!a) return;
+  const source = state.runs.find(r => r.runId === a.runId)?.sources.find(s => s.id === a.sourceId);
+  const link = safeUrl(source?.sourceUrl);
+  openDetail(detailHead(`${names[a.market] || a.market} · 待核验`, a.label) +
+    `<div class="detail-measure"><div><span>前次有效读数</span><strong>${number(a.before, a.unit)}</strong></div><div><span>本次读数</span><strong>${number(a.after, a.unit)}</strong></div></div>` +
+    `<section class="detail-section"><h3>变化计算</h3><dl class="fact-list"><dt>绝对变化</dt><dd>${signed(a.difference, a.unit)}</dd><dt>相对变化</dt><dd>${signed(a.percent, '%')}</dd><dt>公式</dt><dd>${escapeHtml(a.formula)}</dd><dt>前次时点</dt><dd>${fullTime(a.beforeAsOf)}</dd><dt>本次时点</dt><dd>${fullTime(a.asOf)}</dd></dl></section>` +
+    `<section class="detail-section"><h3>证据定位</h3><dl class="fact-list"><dt>运行 ID</dt><dd class="inline-code">${escapeHtml(a.runId)}</dd><dt>提醒 ID</dt><dd class="inline-code">${escapeHtml(a.id)}</dd><dt>来源</dt><dd>${escapeHtml(a.sourceId)}</dd><dt>来源网址</dt><dd>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.sourceUrl)}</a>` : '未提供公开网址'}</dd><dt>研究状态</dt><dd>待核验；尚无投资结论</dd></dl></section>`);
+}
+function runDetail(id) {
+  const r = state.runs.find(item => item.runId === id);
+  if (!r) return;
+  const sourceRows = r.sources.map(s => `<div class="health-item"><span class="source-name">${escapeHtml(s.id)} · ${names[s.market] || escapeHtml(s.market)}</span><span class="source-state ${escAttr(s.status)}">${statusNames[s.status] || escapeHtml(s.status)}</span></div>`).join('');
+  const observationRows = r.observations?.map(o => `<div class="health-item"><span class="source-name">${escapeHtml(o.label)} <span class="row-sub">${dateTime(o.asOf)}</span></span><span class="source-state">${number(o.value, o.unit)}</span></div>`).join('') || '';
+  openDetail(detailHead('运行档案', r.runId) +
+    `<section class="detail-section"><dl class="fact-list"><dt>开始时间</dt><dd>${fullTime(r.startedAt)}</dd><dt>结束时间</dt><dd>${fullTime(r.finishedAt)}</dd><dt>观察值</dt><dd>${r.observationCount}</dd><dt>提醒</dt><dd>${r.alertCount}</dd></dl></section>` +
+    `<section class="detail-section"><h3>来源状态</h3><div>${sourceRows}</div></section>` +
+    `<section class="detail-section"><h3>本轮观察</h3>${observationRows || '<p class="section-note">此轮无有效观察，或详细记录已超过看板索引范围。</p>'}</section>`);
+}
+function trendSvg(points) {
+  if (points.length < 2) return '<p class="section-note">至少两次可比观察后显示趋势。</p>';
+  const values = points.map(p => p.value), min = Math.min(...values), max = Math.max(...values);
+  const span = max - min || 1;
+  const plot = points.map((p, i) => `${(i / (points.length - 1) * 430 + 40).toFixed(1)},${(145 - (p.value - min) / span * 105).toFixed(1)}`).join(' ');
+  return `<svg class="chart" viewBox="0 0 500 180" role="img" aria-label="${points.length} 次观察的趋势图"><line class="gridline" x1="40" x2="470" y1="40" y2="40"/><line class="gridline" x1="40" x2="470" y1="92" y2="92"/><line class="gridline" x1="40" x2="470" y1="145" y2="145"/><text x="0" y="44">${escapeHtml(number(max))}</text><text x="0" y="149">${escapeHtml(number(min))}</text><polyline class="series" points="${plot}"/></svg>`;
+}
+function marketDetail(id) {
+  const data = state.markets[id];
+  if (!data) return;
+  const current = data.observations[0];
+  const source = state.latest?.sources?.find(s => s.id === current?.sourceId) || state.latest?.sources?.find(s => s.market === id);
+  const metricId = current?.metricId;
+  const points = state.runs.map(r => r.observations?.find(o => o.market === id && o.metricId === metricId && o.sourceId === current?.sourceId && o.quality !== 'stale')).filter(Boolean).reverse();
+  const link = safeUrl(source?.sourceUrl);
+  openDetail(detailHead(names[id], '市场证据') +
+    `<div class="detail-measure"><div><span>本轮状态</span><strong class="status-value">${statusNames[data.status] || '无数据'}</strong></div><div><span>最新有效值</span><strong>${current ? number(current.value, current.unit) : '—'}</strong></div></div>` +
+    `<section class="detail-section"><h3>指标趋势</h3>${trendSvg(points)}<p class="section-note">同一来源、同一指标的已归档观察；无可比记录时不绘制趋势。</p></section>` +
+    `<section class="detail-section"><h3>来源与时间</h3><dl class="fact-list"><dt>指标</dt><dd>${current ? escapeHtml(current.label) : '未接入或本轮无有效值'}</dd><dt>观察时间</dt><dd>${current ? fullTime(current.asOf) : '—'}</dd><dt>采集时间</dt><dd>${current ? fullTime(current.fetchedAt) : '—'}</dd><dt>来源</dt><dd>${source ? escapeHtml(source.id) : '—'}</dd><dt>来源网址</dt><dd>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.sourceUrl)}</a>` : '未提供公开网址'}</dd></dl></section>`);
+}
+
+function render() {
+  if (!state) return;
+  const section = nav();
+  document.querySelectorAll('[data-nav]').forEach(a => a.setAttribute('aria-current', a.dataset.nav === section ? 'page' : 'false'));
+  app.innerHTML = ({ overview, alerts: alertsPage, runs: runsPage, about: aboutPage })[section]();
+}
+async function load() {
+  try {
+    const sample = new URLSearchParams(location.search).has('sample');
+    const response = await fetch(sample ? '/sample.json' : '/api/state', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Load failed');
+    state = await response.json();
+    render();
+  } catch { app.innerHTML = '<div class="error-notice">暂时无法读取运行档案。请检查本机服务和数据目录。</div>'; }
+}
+document.addEventListener('click', event => {
+  const target = event.target.closest('[data-alert],[data-run],[data-market],[data-close]');
+  if (!target) return;
+  if (target.dataset.close !== undefined) closeDetail();
+  else if (target.dataset.alert) alertDetail(target.dataset.alert);
+  else if (target.dataset.run) runDetail(target.dataset.run);
+  else if (target.dataset.market) marketDetail(target.dataset.market);
+});
+detailLayer.addEventListener('click', event => { if (event.target === detailLayer) closeDetail(); });
+document.addEventListener('keydown', event => {
+  if (detailLayer.hidden) return;
+  if (event.key === 'Escape') { closeDetail(); return; }
+  if (event.key === 'Tab') {
+    const focusables = [...detailLayer.querySelectorAll('button,a[href],select,[tabindex]:not([tabindex="-1"])')];
+    const first = focusables[0], last = focusables.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }
+});
+document.addEventListener('change', event => {
+  if (event.target.id === 'market-filter') marketFilter = event.target.value;
+  if (event.target.id === 'severity-filter') severityFilter = event.target.value;
+  if (event.target.id === 'market-filter' || event.target.id === 'severity-filter') render();
+});
+document.querySelector('#theme-toggle').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('theme', next); } catch {}
+});
+document.querySelector('#refresh-button').addEventListener('click', load);
+window.addEventListener('hashchange', () => { closeDetail(); render(); });
+try { if (localStorage.getItem('theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch {}
+load();

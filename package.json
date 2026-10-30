@@ -1,0 +1,13 @@
+{
+  "name": "market-research-desk",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/server.js",
+    "monitor": "node src/cli.js run",
+    "check": "node --test"
+  },
+  "license": "MIT"
+}

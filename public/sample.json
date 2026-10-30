@@ -1,0 +1,479 @@
+{
+  "sample": true,
+  "generatedAt": "2026-01-07T23:12:00.000Z",
+  "latest": {
+    "schemaVersion": 1,
+    "runId": "2026-01-07T23-10-00-000Z-000003",
+    "startedAt": "2026-01-07T23:10:00.000Z",
+    "finishedAt": "2026-01-07T23:10:00.000Z",
+    "observations": [
+      {
+        "market": "a-share",
+        "sourceId": "A 股市场广度",
+        "metricId": "headline",
+        "label": "上涨占比",
+        "value": 39.4,
+        "unit": "%",
+        "asOf": "2026-01-07T07:00:00.000Z",
+        "fetchedAt": "2026-01-07T23:10:00.000Z"
+      },
+      {
+        "market": "hong-kong",
+        "sourceId": "港股市场成交",
+        "metricId": "headline",
+        "label": "主板成交额",
+        "value": 190.3,
+        "unit": "HKD bn",
+        "asOf": "2026-01-07T08:00:00.000Z",
+        "fetchedAt": "2026-01-07T23:10:00.000Z"
+      },
+      {
+        "market": "us",
+        "sourceId": "美股波动率",
+        "metricId": "headline",
+        "label": "波动率指数",
+        "value": 21.1,
+        "unit": "pts",
+        "asOf": "2026-01-07T21:00:00.000Z",
+        "fetchedAt": "2026-01-07T23:10:00.000Z"
+      },
+      {
+        "market": "crypto",
+        "sourceId": "加密市场市值",
+        "metricId": "headline",
+        "label": "总市值",
+        "value": 2650,
+        "unit": "USD bn",
+        "asOf": "2026-01-07T00:00:00.000Z",
+        "fetchedAt": "2026-01-07T23:10:00.000Z"
+      }
+    ],
+    "alerts": [
+      {
+        "id": "sample-alert-01",
+        "market": "crypto",
+        "sourceId": "加密市场市值",
+        "metricId": "headline",
+        "label": "总市值",
+        "before": 2785,
+        "after": 2650,
+        "unit": "USD bn",
+        "difference": -135,
+        "percent": -4.847396768402154,
+        "beforeAsOf": "2026-01-06T00:00:00.000Z",
+        "asOf": "2026-01-07T00:00:00.000Z",
+        "severity": "review",
+        "status": "unverified",
+        "formula": "(current - previous) / abs(previous) × 100"
+      }
+    ],
+    "sources": [
+      {
+        "id": "A 股市场广度",
+        "market": "a-share",
+        "status": "ok",
+        "fetchedAt": "2026-01-07T23:10:00.000Z",
+        "count": 1,
+        "sourceUrl": null
+      },
+      {
+        "id": "港股市场成交",
+        "market": "hong-kong",
+        "status": "ok",
+        "fetchedAt": "2026-01-07T23:10:00.000Z",
+        "count": 1,
+        "sourceUrl": null
+      },
+      {
+        "id": "美股波动率",
+        "market": "us",
+        "status": "ok",
+        "fetchedAt": "2026-01-07T23:10:00.000Z",
+        "count": 1,
+        "sourceUrl": null
+      },
+      {
+        "id": "加密市场市值",
+        "market": "crypto",
+        "status": "ok",
+        "fetchedAt": "2026-01-07T23:10:00.000Z",
+        "count": 1,
+        "sourceUrl": null
+      }
+    ],
+    "notifications": []
+  },
+  "markets": {
+    "a-share": {
+      "status": "ok",
+      "observation": {
+        "market": "a-share",
+        "sourceId": "A 股市场广度",
+        "metricId": "headline",
+        "label": "上涨占比",
+        "value": 39.4,
+        "unit": "%",
+        "asOf": "2026-01-07T07:00:00.000Z",
+        "fetchedAt": "2026-01-07T23:10:00.000Z"
+      },
+      "observations": [
+        {
+          "market": "a-share",
+          "sourceId": "A 股市场广度",
+          "metricId": "headline",
+          "label": "上涨占比",
+          "value": 39.4,
+          "unit": "%",
+          "asOf": "2026-01-07T07:00:00.000Z",
+          "fetchedAt": "2026-01-07T23:10:00.000Z"
+        }
+      ]
+    },
+    "hong-kong": {
+      "status": "ok",
+      "observation": {
+        "market": "hong-kong",
+        "sourceId": "港股市场成交",
+        "metricId": "headline",
+        "label": "主板成交额",
+        "value": 190.3,
+        "unit": "HKD bn",
+        "asOf": "2026-01-07T08:00:00.000Z",
+        "fetchedAt": "2026-01-07T23:10:00.000Z"
+      },
+      "observations": [
+        {
+          "market": "hong-kong",
+          "sourceId": "港股市场成交",
+          "metricId": "headline",
+          "label": "主板成交额",
+          "value": 190.3,
+          "unit": "HKD bn",
+          "asOf": "2026-01-07T08:00:00.000Z",
+          "fetchedAt": "2026-01-07T23:10:00.000Z"
+        }
+      ]
+    },
+    "us": {
+      "status": "ok",
+      "observation": {
+        "market": "us",
+        "sourceId": "美股波动率",
+        "metricId": "headline",
+        "label": "波动率指数",
+        "value": 21.1,
+        "unit": "pts",
+        "asOf": "2026-01-07T21:00:00.000Z",
+        "fetchedAt": "2026-01-07T23:10:00.000Z"
+      },
+      "observations": [
+        {
+          "market": "us",
+          "sourceId": "美股波动率",
+          "metricId": "headline",
+          "label": "波动率指数",
+          "value": 21.1,
+          "unit": "pts",
+          "asOf": "2026-01-07T21:00:00.000Z",
+          "fetchedAt": "2026-01-07T23:10:00.000Z"
+        }
+      ]
+    },
+    "crypto": {
+      "status": "ok",
+      "observation": {
+        "market": "crypto",
+        "sourceId": "加密市场市值",
+        "metricId": "headline",
+        "label": "总市值",
+        "value": 2650,
+        "unit": "USD bn",
+        "asOf": "2026-01-07T00:00:00.000Z",
+        "fetchedAt": "2026-01-07T23:10:00.000Z"
+      },
+      "observations": [
+        {
+          "market": "crypto",
+          "sourceId": "加密市场市值",
+          "metricId": "headline",
+          "label": "总市值",
+          "value": 2650,
+          "unit": "USD bn",
+          "asOf": "2026-01-07T00:00:00.000Z",
+          "fetchedAt": "2026-01-07T23:10:00.000Z"
+        }
+      ]
+    }
+  },
+  "alerts": [
+    {
+      "id": "sample-alert-01",
+      "market": "crypto",
+      "sourceId": "加密市场市值",
+      "metricId": "headline",
+      "label": "总市值",
+      "before": 2785,
+      "after": 2650,
+      "unit": "USD bn",
+      "difference": -135,
+      "percent": -4.847396768402154,
+      "beforeAsOf": "2026-01-06T00:00:00.000Z",
+      "asOf": "2026-01-07T00:00:00.000Z",
+      "severity": "review",
+      "status": "unverified",
+      "formula": "(current - previous) / abs(previous) × 100",
+      "runId": "2026-01-07T23-10-00-000Z-000003"
+    }
+  ],
+  "runs": [
+    {
+      "runId": "2026-01-07T23-10-00-000Z-000003",
+      "startedAt": "2026-01-07T23:10:00.000Z",
+      "finishedAt": "2026-01-07T23:10:00.000Z",
+      "sources": [
+        {
+          "id": "A 股市场广度",
+          "market": "a-share",
+          "status": "ok",
+          "fetchedAt": "2026-01-07T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        },
+        {
+          "id": "港股市场成交",
+          "market": "hong-kong",
+          "status": "ok",
+          "fetchedAt": "2026-01-07T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        },
+        {
+          "id": "美股波动率",
+          "market": "us",
+          "status": "ok",
+          "fetchedAt": "2026-01-07T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        },
+        {
+          "id": "加密市场市值",
+          "market": "crypto",
+          "status": "ok",
+          "fetchedAt": "2026-01-07T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        }
+      ],
+      "observations": [
+        {
+          "market": "a-share",
+          "sourceId": "A 股市场广度",
+          "metricId": "headline",
+          "label": "上涨占比",
+          "value": 39.4,
+          "unit": "%",
+          "asOf": "2026-01-07T07:00:00.000Z",
+          "fetchedAt": "2026-01-07T23:10:00.000Z"
+        },
+        {
+          "market": "hong-kong",
+          "sourceId": "港股市场成交",
+          "metricId": "headline",
+          "label": "主板成交额",
+          "value": 190.3,
+          "unit": "HKD bn",
+          "asOf": "2026-01-07T08:00:00.000Z",
+          "fetchedAt": "2026-01-07T23:10:00.000Z"
+        },
+        {
+          "market": "us",
+          "sourceId": "美股波动率",
+          "metricId": "headline",
+          "label": "波动率指数",
+          "value": 21.1,
+          "unit": "pts",
+          "asOf": "2026-01-07T21:00:00.000Z",
+          "fetchedAt": "2026-01-07T23:10:00.000Z"
+        },
+        {
+          "market": "crypto",
+          "sourceId": "加密市场市值",
+          "metricId": "headline",
+          "label": "总市值",
+          "value": 2650,
+          "unit": "USD bn",
+          "asOf": "2026-01-07T00:00:00.000Z",
+          "fetchedAt": "2026-01-07T23:10:00.000Z"
+        }
+      ],
+      "observationCount": 4,
+      "alertCount": 1
+    },
+    {
+      "runId": "2026-01-06T23-10-00-000Z-000002",
+      "startedAt": "2026-01-06T23:10:00.000Z",
+      "finishedAt": "2026-01-06T23:10:00.000Z",
+      "sources": [
+        {
+          "id": "A 股市场广度",
+          "market": "a-share",
+          "status": "ok",
+          "fetchedAt": "2026-01-06T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        },
+        {
+          "id": "港股市场成交",
+          "market": "hong-kong",
+          "status": "ok",
+          "fetchedAt": "2026-01-06T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        },
+        {
+          "id": "美股波动率",
+          "market": "us",
+          "status": "ok",
+          "fetchedAt": "2026-01-06T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        },
+        {
+          "id": "加密市场市值",
+          "market": "crypto",
+          "status": "ok",
+          "fetchedAt": "2026-01-06T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        }
+      ],
+      "observations": [
+        {
+          "market": "a-share",
+          "sourceId": "A 股市场广度",
+          "metricId": "headline",
+          "label": "上涨占比",
+          "value": 42.8,
+          "unit": "%",
+          "asOf": "2026-01-06T07:00:00.000Z",
+          "fetchedAt": "2026-01-06T23:10:00.000Z"
+        },
+        {
+          "market": "hong-kong",
+          "sourceId": "港股市场成交",
+          "metricId": "headline",
+          "label": "主板成交额",
+          "value": 176.4,
+          "unit": "HKD bn",
+          "asOf": "2026-01-06T08:00:00.000Z",
+          "fetchedAt": "2026-01-06T23:10:00.000Z"
+        },
+        {
+          "market": "us",
+          "sourceId": "美股波动率",
+          "metricId": "headline",
+          "label": "波动率指数",
+          "value": 18.2,
+          "unit": "pts",
+          "asOf": "2026-01-06T21:00:00.000Z",
+          "fetchedAt": "2026-01-06T23:10:00.000Z"
+        },
+        {
+          "market": "crypto",
+          "sourceId": "加密市场市值",
+          "metricId": "headline",
+          "label": "总市值",
+          "value": 2785,
+          "unit": "USD bn",
+          "asOf": "2026-01-06T00:00:00.000Z",
+          "fetchedAt": "2026-01-06T23:10:00.000Z"
+        }
+      ],
+      "observationCount": 4,
+      "alertCount": 0
+    },
+    {
+      "runId": "2026-01-05T23-10-00-000Z-000001",
+      "startedAt": "2026-01-05T23:10:00.000Z",
+      "finishedAt": "2026-01-05T23:10:00.000Z",
+      "sources": [
+        {
+          "id": "A 股市场广度",
+          "market": "a-share",
+          "status": "ok",
+          "fetchedAt": "2026-01-05T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        },
+        {
+          "id": "港股市场成交",
+          "market": "hong-kong",
+          "status": "ok",
+          "fetchedAt": "2026-01-05T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        },
+        {
+          "id": "美股波动率",
+          "market": "us",
+          "status": "ok",
+          "fetchedAt": "2026-01-05T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        },
+        {
+          "id": "加密市场市值",
+          "market": "crypto",
+          "status": "ok",
+          "fetchedAt": "2026-01-05T23:10:00.000Z",
+          "count": 1,
+          "sourceUrl": null
+        }
+      ],
+      "observations": [
+        {
+          "market": "a-share",
+          "sourceId": "A 股市场广度",
+          "metricId": "headline",
+          "label": "上涨占比",
+          "value": 47.2,
+          "unit": "%",
+          "asOf": "2026-01-05T07:00:00.000Z",
+          "fetchedAt": "2026-01-05T23:10:00.000Z"
+        },
+        {
+          "market": "hong-kong",
+          "sourceId": "港股市场成交",
+          "metricId": "headline",
+          "label": "主板成交额",
+          "value": 182.1,
+          "unit": "HKD bn",
+          "asOf": "2026-01-05T08:00:00.000Z",
+          "fetchedAt": "2026-01-05T23:10:00.000Z"
+        },
+        {
+          "market": "us",
+          "sourceId": "美股波动率",
+          "metricId": "headline",
+          "label": "波动率指数",
+          "value": 17.8,
+          "unit": "pts",
+          "asOf": "2026-01-05T21:00:00.000Z",
+          "fetchedAt": "2026-01-05T23:10:00.000Z"
+        },
+        {
+          "market": "crypto",
+          "sourceId": "加密市场市值",
+          "metricId": "headline",
+          "label": "总市值",
+          "value": 2820,
+          "unit": "USD bn",
+          "asOf": "2026-01-05T00:00:00.000Z",
+          "fetchedAt": "2026-01-05T23:10:00.000Z"
+        }
+      ],
+      "observationCount": 4,
+      "alertCount": 0
+    }
+  ]
+}
