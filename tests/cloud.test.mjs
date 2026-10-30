@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { collectCompany, collectCrypto } from '../cloud/sources.js';
 import { searchSpot, spotDetail } from '../cloud/market.js';
+import worker from '../cloud/worker.js';
 
 const capturedAt = '2026-10-30T16:00:00Z';
 
@@ -66,4 +67,12 @@ test('spot search and detail use only active USDT pairs, preserve view and UTC c
   assert.equal(detail.previousClose, 10);
   assert.equal(detail.rows[0].closed, false);
   assert.equal(detail.rows[0].takerBuyQuote, 30);
+});
+
+test('legacy hostname redirects before any data read', async () => {
+  const response = await worker.fetch(new Request('https://old.example.test/api/state?x=1'), {
+    LEGACY_HOST:'old.example.test', PRIMARY_HOST:'private.example.test'
+  });
+  assert.equal(response.status, 308);
+  assert.equal(response.headers.get('location'), 'https://private.example.test/api/state?x=1');
 });
