@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="带来源与运行记录的私人市场研究工作台">
+  <title>Research Desk · 市场研究台</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail" aria-label="研究台导航">
+      <a class="wordmark" href="#overview" aria-label="Research Desk 首页">
+        <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span><strong>Research Desk</strong><small>MARKET INTELLIGENCE</small></span>
+      </a>
+      <div class="rail-label">工作区</div>
+      <nav class="navigation" aria-label="主要页面">
+        <a href="#overview" data-nav="overview"><span class="nav-icon" aria-hidden="true">◫</span>今日概览</a>
+        <a href="#assets" data-nav="assets"><span class="nav-icon" aria-hidden="true">▤</span>标的与主题</a>
+        <a href="#events" data-nav="events"><span class="nav-icon" aria-hidden="true">≋</span>事件证据</a>
+        <a href="#reports" data-nav="reports"><span class="nav-icon" aria-hidden="true">▥</span>研究报告</a>
+        <a href="#runs" data-nav="runs"><span class="nav-icon" aria-hidden="true">⌁</span>运行中心</a>
+      </nav>
+      <div class="rail-bottom">
+        <span class="rail-pill"><b></b> 私人研究台</span>
+        <p>公开来源试点<br>只展示已核实的读数</p>
+      </div>
+    </aside>
+    <div class="main-column">
+      <header class="topbar">
+        <div class="topbar-context"><span>WORKSPACE / MARKET RESEARCH</span><strong id="page-crumb">今日概览</strong></div>
+        <div class="topbar-actions">
+          <span id="updated-at" class="updated-at">读取中</span>
+          <button id="theme-button" class="quiet-button" type="button" aria-label="切换深浅色">深色</button>
+          <button id="refresh-button" class="primary-button" type="button">刷新数据</button>
+        </div>
+      </header>
+      <main id="app" tabindex="-1"><div class="loading"><span class="loading-bar"></span>正在读取研究数据</div></main>
+      <footer>Research Desk <span>来源 · 时点 · 口径 · 版本</span></footer>
+    </div>
+  </div>
+</body>
+</html>
