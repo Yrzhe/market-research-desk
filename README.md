@@ -4,6 +4,8 @@ An open-source, self-hosted research monitor for A shares, Hong Kong stocks, US 
 
 The repository contains program code and an explicitly labelled synthetic preview. It contains no personal portfolio, private research reports, actual market archive, API credentials, Telegram recipients, or server addresses.
 
+The [data availability and decision-system research](docs/research/2026-10-30-data-and-decision-system.md) checks company-level sources, ingestion rights, retention, and a VPS + Cloudflare architecture before any further dashboard layout work.
+
 ## Interface preview
 
 These screenshots use fictional, explicitly labelled sample data. The default installation starts empty.
