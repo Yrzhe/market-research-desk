@@ -9,6 +9,11 @@ let activeChart = 'btc';
 let assetFilter = 'all';
 let assetQuery = '';
 let eventFilter = 'all';
+let cryptoView = 'daily';
+let cryptoDetail = null;
+let cryptoRequest = 0;
+let searchTimer = null;
+let liveTimer = null;
 
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 function safeUrl(value) { try { const u = new URL(value); return u.protocol === 'https:' ? u.href : ''; } catch { return ''; } }
@@ -21,7 +26,15 @@ function change(current, previous) { if (!Number.isFinite(current) || !Number.is
 function title(kicker, heading, description, aside = '') { return `<div class="page-title"><div><div class="eyebrow">${esc(kicker)}</div><h1>${esc(heading)}</h1><p>${description}</p></div><div class="date-mark">${aside}</div></div>`; }
 function section(heading, note = '', link = '') { return `<div class="section-title"><h2>${esc(heading)}</h2>${link ? `<a href="${esc(link)}">${esc(note)}</a>` : `<small>${esc(note)}</small>`}</div>`; }
 function empty(heading, detail) { return `<div class="empty"><strong>${esc(heading)}</strong>${esc(detail)}</div>`; }
-function asset(id) { return data.assets.find(a => a.id === id); }
+function asset(id) {
+  const configured = data.assets.find(a => a.id === id);
+  if (configured) return configured;
+  if (/^crypto:[A-Z0-9]{3,20}$/.test(id || '')) {
+    const pair = id.slice(7);
+    return { id, market: 'crypto', kind: 'token', symbol: pair.replace(/USDT$/, '/USDT'), name: pair.replace(/USDT$/, ''), sector: 'Digital Assets', pair, sourceId: 'binance-live' };
+  }
+  return null;
+}
 function latestRun(sourceId) { return data.runs.find(r => r.source_id === sourceId); }
 function status(assetRow) {
   const run = latestRun(assetRow.sourceId);
@@ -59,10 +72,113 @@ function lineChart(points, valueKey, unitLabel, axisFormatter, zero = false) {
   const xy = values.map((v, i) => [left + i / (values.length - 1) * pw, top + (max - v) / (max - min) * ph]);
   const path = xy.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
   const area = `${path} L${xy.at(-1)[0].toFixed(1)},${(top+ph).toFixed(1)} L${left},${(top+ph).toFixed(1)} Z`;
-  const grid = [0, .5, 1].map(t => { const y = top + t * ph; const v = max - t * (max - min); return `<line class="grid" x1="${left}" x2="${width-right}" y1="${y}" y2="${y}"/><text x="${left-8}" y="${y+4}" text-anchor="end">${esc(axisFormatter(v))}</text>`; }).join('');
-  const labels = [0, Math.floor((points.length - 1) / 2), points.length - 1].map(i => `<text x="${xy[i][0]}" y="${height-8}" text-anchor="${i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}">${esc((points[i].day || points[i].period_end || '').slice(0,7))}</text>`).join('');
+  const grid = [0, .5, 1].map(t => { const y = top + t * ph; return `<line class="grid" x1="${left}" x2="${width-right}" y1="${y}" y2="${y}"/>`; }).join('');
+  const labels = [0, Math.floor((points.length - 1) / 2), points.length - 1].map(i => `<span>${esc((points[i].day || points[i].period_end || '').slice(0,7))}</span>`).join('');
   const dots = points.length <= 12 ? xy.map((p, i) => `<circle class="dot" cx="${p[0]}" cy="${p[1]}" r="3.5"><title>${esc(points[i].day || points[i].period_end)} · ${esc(axisFormatter(values[i]))} ${esc(unitLabel)}</title></circle>`).join('') : `<circle class="dot" cx="${xy.at(-1)[0]}" cy="${xy.at(-1)[1]}" r="4"><title>${esc(points.at(-1).day || points.at(-1).period_end)} · ${esc(axisFormatter(values.at(-1)))} ${esc(unitLabel)}</title></circle>`;
-  return `<div class="chart" role="img" aria-label="${esc(unitLabel)}历史走势，${points.length}个数据点"><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${grid}<path class="area" d="${area}"/><path class="path" d="${path}"/>${dots}${labels}</svg></div>`;
+  return `<div class="chart-figure" role="img" aria-label="${esc(unitLabel)}历史走势，${points.length}个数据点"><div class="chart-y"><span>${esc(axisFormatter(max))}</span><span>${esc(axisFormatter((max+min)/2))}</span><span>${esc(axisFormatter(min))}</span></div><div class="chart-plot"><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${grid}<path class="area" d="${area}"/><path class="path" d="${path}"/>${dots}</svg></div><div class="chart-x">${labels}</div></div>`;
+}
+
+const stanceLabels = { bull: '看多', bear: '看空', neutral: '中性', unrated: '未评级' };
+function reportBadges(r) {
+  return `<span class="report-tags"><span class="stance ${esc(r.stance || 'unrated')}">${esc(stanceLabels[r.stance] || '未评级')}</span>${(r.markets || []).map(m => `<span class="tag">${esc(names[m] || m)}</span>`).join('')}</span>`;
+}
+function linkedReports(a) {
+  const symbol = (a.pair || a.symbol || '').replace('/', '').toUpperCase();
+  return data.reports.filter(r => (r.assets || []).some(link => link.market === a.market && link.symbol.toUpperCase().replace('/', '') === symbol));
+}
+function reportSection(a) {
+  const rows = linkedReports(a);
+  return `<section class="linked-reports">${section('关联研究',`${rows.length} 份报告`)}<div class="panel panel-pad">${rows.length ? `<div class="report-list">${rows.map(r => `<a class="report-row" href="/reports/${encodeURIComponent(r.id)}"><div class="date">${date(r.published_at)} · ${esc(a.symbol)}</div>${reportBadges(r)}<strong>${esc(r.title)}</strong><small>${esc(r.description)}</small></a>`).join('')}</div>` : empty('暂无关联报告','报告发布时可关联一个或多个标的，之后会自动出现在这里。')}</div></section>`;
+}
+
+const cryptoViews = [['intraday','分时'],['fiveDay','5日'],['daily','日K'],['weekly','周K'],['monthly','月K'],['year','近1年'],['second','秒线']];
+function cryptoAssetPage(a) {
+  const symbol = a.pair || a.symbol.replace('/', '');
+  return title('SPOT / BINANCE', `${a.name} · ${a.symbol}`, `加密资产 · Binance USDT 现货 · <span class="tag good">公开行情</span>`, `<a class="text-link" href="#assets">返回目录</a>`) +
+    `<div class="crypto-hero panel panel-pad"><div class="crypto-hero-top"><div><div class="panel-kicker">LAST TRADE / ${esc(symbol)}</div><div id="live-price" class="crypto-price">读取中</div><div id="live-change" class="crypto-change">正在连接 Binance 公开行情</div></div><div class="live-indicator"><span class="live-dot"></span><strong>约 15 秒更新</strong><small id="live-asof">—</small></div></div><div class="period-tabs" role="group" aria-label="图表周期">${cryptoViews.map(([key,label])=>`<button type="button" data-crypto-view="${key}" class="${cryptoView===key?'active':''}" aria-pressed="${cryptoView===key}">${label}</button>`).join('')}</div><div id="live-chart" class="live-chart">${empty('正在读取走势图','')}</div><div id="live-status" class="chart-footnote">Binance Spot · 数据以交易所实际返回为准</div></div>` +
+    `<div class="metric-board" id="quote-metrics">${['今日开盘（UTC）','前日收盘（UTC）','24h 最高','24h 最低','24h 成交量','24h 成交额','24h 成交笔数','换手率'].map(label=>`<div><small>${label}</small><strong>—</strong></div>`).join('')}</div>` +
+    `<div class="two-col crypto-detail-grid"><section>${section('成交方向','选定周期 · Binance 主动买卖估算')}<div class="panel panel-pad" id="flow-card">${empty('正在计算','')}</div></section><section>${section('简况与资讯','覆盖范围')}<div class="panel panel-pad"><p class="hint">价格与成交来自 Binance 单一 USDT 现货交易对。它不代表所有交易所的综合报价；换手率需流通量口径，当前无可核查读数。</p><div class="source-note">相关新闻、监管事件、链上数据与协议财务尚未接入。图中的成交方向来自交易所 K 线的主动买入成交额，不等于股票市场的主力资金流向。</div></div></section></div>` +
+    `<section class="bar-history">${section('历史读数','最近 8 根 · 选定周期')}<div class="panel" id="recent-bars">${empty('正在读取历史读数','')}</div></section>` + reportSection(a);
+}
+
+function marketTime(value, view) {
+  const d = new Date(value);
+  return new Intl.DateTimeFormat('zh-TW', { timeZone:'UTC', month:'2-digit', day:'2-digit', ...(view==='intraday'||view==='fiveDay'||view==='second' ? {hour:'2-digit',minute:'2-digit'} : {}) }).format(d);
+}
+function drawMarketChart(detail) {
+  const all = detail.rows || [];
+  const mobile = matchMedia('(max-width:720px)').matches;
+  const candles = ['daily','weekly','monthly'].includes(detail.view);
+  const rows = candles && mobile ? all.slice(-45) : all;
+  if (rows.length < 2) return empty('当前周期暂无足够数据','可切换其他周期，或稍后再试。');
+  const low = Math.min(...rows.map(r=>r.low));
+  const high = Math.max(...rows.map(r=>r.high));
+  const spread = Math.max(high-low, high*.001);
+  const min = low-spread*.08, max = high+spread*.08;
+  const W=1000,H=230,pad=12,plotH=H-pad*2;
+  const x=i=>i/(rows.length-1)*W;
+  const y=v=>pad+(max-v)/(max-min)*plotH;
+  const grid=[0,.25,.5,.75,1].map(t=>`<line class="grid" x1="0" x2="${W}" y1="${(pad+t*plotH).toFixed(1)}" y2="${(pad+t*plotH).toFixed(1)}"/>`).join('');
+  const values = candles ? rows.map((r,i)=>{
+    const cx=(i+.5)/rows.length*W, w=Math.max(2,Math.min(12,W/rows.length*.57));
+    const top=Math.min(y(r.open),y(r.close)), h=Math.max(1,Math.abs(y(r.open)-y(r.close)));
+    const cls=r.close>=r.open?'rise':'fall';
+    return `<g class="${cls}"><line x1="${cx.toFixed(1)}" x2="${cx.toFixed(1)}" y1="${y(r.high).toFixed(1)}" y2="${y(r.low).toFixed(1)}"/><rect x="${(cx-w/2).toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}"/></g>`;
+  }).join('') : `<path class="market-line" d="${rows.map((r,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(r.close).toFixed(1)}`).join(' ')}"/>`;
+  const labels=[rows[0],rows[Math.floor(rows.length/2)],rows.at(-1)].map(r=>`<span>${marketTime(r.at,detail.view)}</span>`).join('');
+  const ticks=[max,max-(max-min)*.25,max-(max-min)*.5,max-(max-min)*.75,min].map(v=>`<span>${num(v,v>=100?0:2)}</span>`).join('');
+  const note=detail.view==='second'?'秒线仅显示最近约 5 分钟':`${rows.length} 根${candles?' K 线':'观测'} · ${all.at(-1).closed?'最后一根已收盘':'最后一根仍在形成'}`;
+  return `<div class="market-chart" role="img" aria-label="${esc(detail.symbol)} ${esc(detail.viewLabel)} 价格走势"><div class="market-y">${ticks}</div><div class="market-plot"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}${values}</svg><div id="chart-marker" class="chart-marker" hidden></div><div id="chart-scrub" class="chart-scrub" aria-hidden="true"></div></div><div class="market-x">${labels}</div></div><div id="chart-inspect" class="chart-inspect">${esc(note)} · 拖动图表查看单根数据</div>`;
+}
+
+function setCryptoDetail(detail) {
+  cryptoDetail=detail;
+  const quote=detail.rolling24h;
+  document.querySelector('#live-price').textContent=`${num(quote.last,quote.last>=100?2:4)} ${detail.quoteAsset}`;
+  const pct=Number.isFinite(quote.changePercent)?quote.changePercent:0;
+  const delta=document.querySelector('#live-change');
+  delta.className=`crypto-change ${pct>=0?'up':'down'}`;
+  delta.textContent=`${pct>=0?'+':''}${num(pct,2)}% · 滚动 24 小时`;
+  document.querySelector('#live-asof').textContent=`读取 ${stamp(detail.fetchedAt)}`;
+  document.querySelector('#live-chart').innerHTML=drawMarketChart(detail);
+  const fields=[detail.dayOpen,detail.previousClose,quote.high,quote.low,quote.volume,quote.quoteVolume,quote.trades,null];
+  const precision=v=>v==null?'—':num(v,v>=100?2:4);
+  document.querySelectorAll('#quote-metrics strong').forEach((el,i)=>{el.textContent=i===7?'未接入':i===6?num(fields[i],0):precision(fields[i]);});
+  const used=detail.rows.filter(r=>Number.isFinite(r.quoteVolume)&&Number.isFinite(r.takerBuyQuote));
+  const buy=used.reduce((sum,r)=>sum+r.takerBuyQuote,0),total=used.reduce((sum,r)=>sum+r.quoteVolume,0),sell=Math.max(0,total-buy);
+  const buyPct=total?Math.max(0,Math.min(100,buy/total*100)):0;
+  document.querySelector('#flow-card').innerHTML=`<div class="flow-head"><div><small>主动买入成交额</small><strong>${num(buy,0)} USDT</strong></div><div><small>主动卖出估算</small><strong>${num(sell,0)} USDT</strong></div></div><div class="flow-track"><span style="width:${buyPct.toFixed(1)}%"></span></div><div class="flow-foot"><span>买入占比 ${num(buyPct,1)}%</span><span>买卖差额 ${num(buy-sell,0)} USDT</span></div><div class="source-note">由该周期 ${used.length} 根 K 线汇总，含最后一根进行中的 K 线；卖出额 = 总成交额 − 主动买入额。</div>`;
+  document.querySelector('#recent-bars').innerHTML=`<div class="table-wrap"><table class="data-table"><thead><tr><th>时间 UTC</th><th class="num">开</th><th class="num">高</th><th class="num">低</th><th class="num">收</th><th class="num">成交量</th></tr></thead><tbody>${detail.rows.slice(-8).reverse().map(r=>`<tr><td>${marketTime(r.at,detail.view)}${r.closed?'':' · 进行中'}</td><td class="num">${num(r.open,2)}</td><td class="num">${num(r.high,2)}</td><td class="num">${num(r.low,2)}</td><td class="num">${num(r.close,2)}</td><td class="num">${num(r.volume,2)}</td></tr>`).join('')}</tbody></table></div>`;
+  document.querySelector('#live-status').innerHTML=`${esc(detail.viewLabel)} · Binance Spot ${esc(detail.symbol)} · <a href="${esc(safeUrl(detail.sourceUrl))}" target="_blank" rel="noopener noreferrer">核对原始数据 ↗</a>`;
+  const scrub=document.querySelector('#chart-scrub');
+  if(scrub) scrub.addEventListener('pointermove', e=>{
+    const rect=scrub.getBoundingClientRect(), rows=['daily','weekly','monthly'].includes(detail.view)&&matchMedia('(max-width:720px)').matches?detail.rows.slice(-45):detail.rows;
+    const ratio=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
+    const row=rows[Math.round(ratio*(rows.length-1))];
+    const marker=document.querySelector('#chart-marker'); marker.hidden=false; marker.style.left=`${ratio*100}%`;
+    document.querySelector('#chart-inspect').textContent=`${marketTime(row.at,detail.view)} UTC · 开 ${num(row.open,2)} · 高 ${num(row.high,2)} · 低 ${num(row.low,2)} · 收 ${num(row.close,2)} ${detail.quoteAsset}${row.closed?'':' · 进行中'}`;
+  });
+}
+
+async function loadCryptoDetail() {
+  const route=decodeURIComponent(location.hash.slice(1));
+  const [page,id]=route.split('/');
+  if(page!=='asset') return;
+  const a=asset(id);
+  if(!a || a.kind!=='token') return;
+  const symbol=a.pair || a.symbol.replace('/','');
+  const requestId=++cryptoRequest;
+  try {
+    const response=await fetch(`/api/crypto/detail?symbol=${encodeURIComponent(symbol)}&view=${encodeURIComponent(cryptoView)}`,{cache:'no-store'});
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const detail=await response.json();
+    if(requestId!==cryptoRequest || !document.querySelector('#live-chart')) return;
+    setCryptoDetail(detail);
+  } catch {
+    if(requestId!==cryptoRequest || !document.querySelector('#live-chart')) return;
+    document.querySelector('#live-chart').innerHTML=empty('行情暂时无法读取','请稍后重试，或选择其他周期。');
+    document.querySelector('#live-status').textContent='Binance 行情连接失败；历史归档读数仍可在概览查看。';
+  }
 }
 
 function chartFor(a) {
@@ -89,7 +205,7 @@ function recentEvents(limit = 4) {
 
 function reportRows(limit = 4) {
   if (!data.reports.length) return empty('报告库尚未发布', '报告将保留发表版本、数据时点和来源。');
-  return `<div class="report-list">${data.reports.slice(0,limit).map(r => `<a class="report-row" href="/reports/${encodeURIComponent(r.id)}"><div class="date">${date(r.published_at)} · ${esc(r.source_count)} 个来源</div><strong>${esc(r.title)}</strong><small>${esc(r.description)}</small></a>`).join('')}</div>`;
+  return `<div class="report-list">${data.reports.slice(0,limit).map(r => `<a class="report-row" href="/reports/${encodeURIComponent(r.id)}"><div class="date">${date(r.published_at)} · ${esc(r.source_count)} 个来源</div>${reportBadges(r)}<strong>${esc(r.title)}</strong><small>${esc(r.description)}</small></a>`).join('')}</div>`;
 }
 
 function assetTable(rows) {
@@ -110,18 +226,19 @@ function overview() {
 function assetsPage() {
   const shown = data.assets.filter(a => (assetFilter==='all' || a.market===assetFilter) && `${a.symbol} ${a.name} ${sectorNames[a.sector]||a.sector}`.toLowerCase().includes(assetQuery.toLowerCase()));
   const groups = Object.entries(sectorNames).map(([name, label]) => { const members = data.assets.filter(a=>a.sector===name); return `<div class="source-row"><div><strong>${esc(label)}</strong><small>${esc(name)} · 自定义试点主题</small></div><span class="mono">${members.length} 标的</span></div>`; }).join('');
-  return title('INSTRUMENTS & THEMES','标的与主题','先看数据覆盖与来源，再进入公司或交易对的历史读数。') + `<div class="filterbar"><div class="tabs">${[['all','全部'],['us','美股'],['crypto','加密'],['a-share','A 股'],['hong-kong','港股']].map(([id,label])=>`<button type="button" data-asset-filter="${id}" class="${assetFilter===id?'active':''}">${label}</button>`).join('')}</div><input class="search" id="asset-search" type="search" placeholder="搜索代码、名称或主题" value="${esc(assetQuery)}" aria-label="搜索标的"></div><div class="asset-grid"><section>${section('标的目录',`${shown.length} / ${data.assets.length} 个试点标的`)}<div class="panel">${assetTable(shown)}</div></section><section>${section('主题观察','试点标签，不等于官方行业分类')}<div class="panel panel-pad"><div class="source-list">${groups}</div><div class="source-note">A 股与港股板块表现尚无合法、稳定的数据源。Web3 使用跨股票、协议、代币的主题关系，待来源验证后扩展。</div></div></section></div>`;
+  return title('INSTRUMENTS & THEMES','标的与主题','已归档标的可直接打开；输入代码还能搜索 Binance USDT 现货交易对。') + `<div class="filterbar"><div class="tabs">${[['all','全部'],['us','美股'],['crypto','加密'],['a-share','A 股'],['hong-kong','港股']].map(([id,label])=>`<button type="button" data-asset-filter="${id}" class="${assetFilter===id?'active':''}">${label}</button>`).join('')}</div><input class="search" id="asset-search" type="search" placeholder="搜索代码、名称或主题" value="${esc(assetQuery)}" aria-label="搜索标的"></div><div id="external-search" class="external-search" aria-live="polite"></div><div class="asset-grid"><section>${section('已归档标的',`${shown.length} / ${data.assets.length} 个试点标的`)}<div class="panel">${assetTable(shown)}</div></section><section>${section('主题观察','试点标签，不等于官方行业分类')}<div class="panel panel-pad"><div class="source-list">${groups}</div><div class="source-note">搜索范围：当前 5 个试点标的 + Binance 在交易中的 USDT 现货交易对。A 股、港股与更多美股的代码搜索需另接授权数据源。</div></div></section></div>`;
 }
 
 function assetPage(id) {
   const a = asset(id); if (!a) return title('INSTRUMENT','标的不存在','请从标的目录重新选择。') + `<a class="text-link" href="#assets">返回标的目录</a>`;
+  if (a.kind === 'token') return cryptoAssetPage(a);
   const s = status(a), last = latestMetric(a);
   const annual = a.kind==='equity' ? ['revenue','net_income','operating_cash_flow'].map(metric=>({metric,rows:facts(a.id,metric)})) : [];
   const recentFilings = data.events.filter(e=>e.asset_id===a.id).slice(0,5);
   const b = bars(a.id); const recent = b.at(-1);
   return title('INSTRUMENT / '+a.market.toUpperCase(),a.name,`${esc(a.symbol)} · ${esc(names[a.market])} · ${esc(sectorNames[a.sector]||a.sector)} · <span class="tag ${s.kind}">${s.label}</span>`, `<a class="text-link" href="#assets">返回目录</a>`) +
     `<div class="overview-grid"><section>${section('历史读数',a.kind==='equity'?'SEC 年度事实':'Binance 已完成日 K')}${chartFor(a)}</section><section>${section('读数说明','透明口径')}<div class="panel panel-pad"><div class="panel-kicker">SOURCE & FRESHNESS</div><h3>${a.kind==='equity'?'SEC CompanyFacts':'Binance Spot Market Data'}</h3><div class="fact-list"><div><small>最新观测</small><strong>${date(assetAsOf(a))}</strong></div><div><small>采集状态</small><strong>${s.label}</strong></div><div><small>读数类别</small><strong>${metricLabel(a)}</strong></div><div><small>采集完成</small><strong>${stamp(latestRun(a.sourceId)?.finished_at)}</strong></div></div><div class="source-note">${a.kind==='equity'?'报表数值按原始申报记录存档，历史更正不覆盖旧版本。此处尚无股价和估值。':'价格来自单一交易所的 USDT 现货交易对；当前未做跨交易所聚合。'}</div></div></section></div>` +
-    (a.kind==='equity' ? `<div class="two-col"><section>${section('财务指标','最新年度，亿美元')}<div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>指标</th><th class="num">本期</th><th class="num">上期</th><th class="num">报告期</th><th>原始申报</th></tr></thead><tbody>${annual.map(({metric,rows})=>{const current=rows.at(-1),previous=rows.at(-2);return `<tr><td>${metricNames[metric]}</td><td class="num">${usd(current?.value)}</td><td class="num">${usd(previous?.value)}</td><td class="num">${date(current?.period_end)}</td><td>${current?.source_url?`<a class="text-link" href="${esc(safeUrl(current.source_url))}" target="_blank" rel="noopener noreferrer">SEC</a>`:'—'}</td></tr>`;}).join('')}</tbody></table></div></div></section><section>${section('披露线索','原始申报')}<div class="panel panel-pad">${recentFilings.length?`<div class="event-stack">${recentFilings.map(e=>`<a class="event-mini" href="${esc(safeUrl(e.source_url))}" target="_blank" rel="noopener noreferrer"><div class="meta"><span>${esc(e.form)}</span><span>${date(e.filed_at)}</span></div><strong>${esc(e.title)}</strong></a>`).join('')}</div>`:empty('暂无记录','等待首次 SEC 采集。')}</div></section></div>` : `<div class="two-col"><section>${section('最新日 K','USDT 交易对')}<div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>交易日</th><th class="num">开盘</th><th class="num">最高</th><th class="num">最低</th><th class="num">收盘</th><th class="num">成交量</th></tr></thead><tbody>${b.slice(-7).reverse().map(row=>`<tr><td>${date(row.day)}</td><td class="num">${num(row.open,2)}</td><td class="num">${num(row.high,2)}</td><td class="num">${num(row.low,2)}</td><td class="num">${num(row.close,2)}</td><td class="num">${num(row.volume,0)}</td></tr>`).join('')}</tbody></table></div></div></section><section>${section('市场与事件','覆盖说明')}<div class="panel panel-pad"><p class="hint">${esc(a.name)} 的日线可用于观察价格走势。链上数据、协议收入、TVL、监管和新闻事件尚未接入，不能从这条价格线推断其原因。</p>${recent?`<div class="source-note">最近已完成的日 K：${date(recent.day)}。价格单位 USDT，成交量单位 ${esc(a.id.toUpperCase())}。</div>`:''}</div></section></div>`);
+    (a.kind==='equity' ? `<div class="two-col"><section>${section('财务指标','最新年度，亿美元')}<div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>指标</th><th class="num">本期</th><th class="num">上期</th><th class="num">报告期</th><th>原始申报</th></tr></thead><tbody>${annual.map(({metric,rows})=>{const current=rows.at(-1),previous=rows.at(-2);return `<tr><td>${metricNames[metric]}</td><td class="num">${usd(current?.value)}</td><td class="num">${usd(previous?.value)}</td><td class="num">${date(current?.period_end)}</td><td>${current?.source_url?`<a class="text-link" href="${esc(safeUrl(current.source_url))}" target="_blank" rel="noopener noreferrer">SEC</a>`:'—'}</td></tr>`;}).join('')}</tbody></table></div></div></section><section>${section('披露线索','原始申报')}<div class="panel panel-pad">${recentFilings.length?`<div class="event-stack">${recentFilings.map(e=>`<a class="event-mini" href="${esc(safeUrl(e.source_url))}" target="_blank" rel="noopener noreferrer"><div class="meta"><span>${esc(e.form)}</span><span>${date(e.filed_at)}</span></div><strong>${esc(e.title)}</strong></a>`).join('')}</div>`:empty('暂无记录','等待首次 SEC 采集。')}</div></section></div>` : `<div class="two-col"><section>${section('最新日 K','USDT 交易对')}<div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>交易日</th><th class="num">开盘</th><th class="num">最高</th><th class="num">最低</th><th class="num">收盘</th><th class="num">成交量</th></tr></thead><tbody>${b.slice(-7).reverse().map(row=>`<tr><td>${date(row.day)}</td><td class="num">${num(row.open,2)}</td><td class="num">${num(row.high,2)}</td><td class="num">${num(row.low,2)}</td><td class="num">${num(row.close,2)}</td><td class="num">${num(row.volume,0)}</td></tr>`).join('')}</tbody></table></div></div></section><section>${section('市场与事件','覆盖说明')}<div class="panel panel-pad"><p class="hint">${esc(a.name)} 的日线可用于观察价格走势。链上数据、协议收入、TVL、监管和新闻事件尚未接入，不能从这条价格线推断其原因。</p>${recent?`<div class="source-note">最近已完成的日 K：${date(recent.day)}。价格单位 USDT，成交量单位 ${esc(a.id.toUpperCase())}。</div>`:''}</div></section></div>`) + reportSection(a);
 }
 
 function eventSummary() {
@@ -140,7 +257,7 @@ function eventsPage() {
 }
 
 function reportsPage() {
-  return title('RESEARCH LIBRARY','研究报告','保留发表版本、来源和数据时点；后续主题研究可从同一入口阅读。') + (data.reports.length ? `<div class="report-cards">${data.reports.map(r=>`<a class="report-card" href="/reports/${encodeURIComponent(r.id)}"><div class="category">RESEARCH NOTE · ${date(r.published_at)}</div><h2>${esc(r.title)}</h2><p>${esc(r.description)}</p><div class="footer"><span>${esc(r.source_count)} 个来源 · 截至 ${date(r.as_of)}</span><span>阅读全文 →</span></div></a>`).join('')}</div>` : `<div class="panel">${empty('报告库待发布','第一批报告准备好后会显示在这里。')}</div>`) + `<div class="light-callout reports-callout">研究报告与实时看板承担不同任务：报告的结论和图表固定在发表时的数据版本，工作台显示最新可用读数。历史复盘时可以并排比较两者。</div>`;
+  return title('RESEARCH LIBRARY','研究报告','按发表时点保存报告；一个报告可关联多个标的和市场。') + (data.reports.length ? `<div class="report-cards">${data.reports.map(r=>`<a class="report-card" href="/reports/${encodeURIComponent(r.id)}"><div class="category">RESEARCH NOTE · ${date(r.published_at)}</div>${reportBadges(r)}<h2>${esc(r.title)}</h2><p>${esc(r.description)}</p><div class="footer"><span>${esc(r.source_count)} 个来源 · 截至 ${date(r.as_of)}${(r.assets||[]).length?` · ${(r.assets||[]).map(a=>esc(a.symbol)).join(' / ')}`:''}</span><span>阅读全文 →</span></div></a>`).join('')}</div>` : `<div class="panel">${empty('报告库待发布','第一批报告准备好后会显示在这里。')}</div>`) + `<div class="light-callout reports-callout">看多、看空、中性只记录报告作者的结论；未评级表示报告没有投资方向判断。市场与标的标签来自发布时的显式关联。</div>`;
 }
 
 function runsPage() {
@@ -148,8 +265,25 @@ function runsPage() {
   return title('OPERATIONS','运行中心','看得到程序处理过程；失败和数据空白会保留状态，不会伪装成 0。') + `<div class="ops-grid"><section>${section('最近运行',`${data.runs.length} 条记录`)}<div class="panel panel-pad"><div class="run-list">${data.runs.length?data.runs.map(r=>`<div class="run-row"><span class="source mono">${esc(r.source_id)}</span><span class="${r.status==='failed'?'error':'muted'}">${r.status==='failed'?esc(r.error||'源失败'):r.status==='running'?'正在处理':'完成'}</span><span class="time">${stamp(r.finished_at||r.started_at)}</span><span class="count">${r.status==='ok'?`${Number(r.checked_count)||0} 条`:'—'}</span></div>`).join(''):empty('尚未开始自动采集','部署与首次回填后显示每个来源的核查记录。')}</div></div></section><section>${section('来源健康','当前试点')}<div class="panel panel-pad"><div class="source-list">${sourceRows}</div><div class="source-note">定时任务按市场时段增量核查。这里的「条」是本次检查的记录数，不等于新增记录数。</div></div></section></div>`;
 }
 
+async function searchOnline() {
+  const target=document.querySelector('#external-search');
+  if(!target) return;
+  const q=assetQuery.trim();
+  if(q.length<2 || !['all','crypto'].includes(assetFilter)) { target.innerHTML=''; return; }
+  target.innerHTML='<div class="search-note">正在搜索 Binance USDT 现货交易对…</div>';
+  try {
+    const response=await fetch(`/api/crypto/search?q=${encodeURIComponent(q)}`);
+    if(!response.ok) throw new Error('Search failed');
+    const {results}=await response.json();
+    if(!document.querySelector('#external-search') || assetQuery.trim()!==q) return;
+    target.innerHTML=results.length?`<div class="search-results"><div class="search-results-head">Binance USDT 现货 · ${results.length} 个匹配</div>${results.map(row=>`<a href="#asset/crypto:${esc(row.symbol)}"><strong>${esc(row.baseAsset)}/USDT</strong><span>Binance Spot · ${esc(row.symbol)}</span><span>查看图表 →</span></a>`).join('')}</div>`:'<div class="search-note">Binance 在交易的 USDT 现货交易对中没有匹配项。</div>';
+  } catch { if(target.isConnected) target.innerHTML='<div class="search-note">交易对搜索暂不可用，请稍后重试。</div>'; }
+}
+
 function render() {
   if (!data) return;
+  if(liveTimer) { clearInterval(liveTimer); liveTimer=null; }
+  cryptoRequest++;
   const route = decodeURIComponent(location.hash.slice(1)) || 'overview';
   const [page, id] = route.split('/');
   const pages = { overview: overview, assets: assetsPage, events: eventsPage, reports: reportsPage, runs: runsPage };
@@ -159,8 +293,17 @@ function render() {
   document.querySelectorAll('[data-chart]').forEach(button=>button.addEventListener('click',()=>{ activeChart=button.dataset.chart; render(); }));
   document.querySelectorAll('[data-asset-filter]').forEach(button=>button.addEventListener('click',()=>{ assetFilter=button.dataset.assetFilter; render(); }));
   const search = document.querySelector('#asset-search');
-  if (search) search.addEventListener('input',()=>{ assetQuery=search.value; const start=search.selectionStart; render(); const newSearch=document.querySelector('#asset-search'); newSearch?.focus(); newSearch?.setSelectionRange(start,start); });
+  if (search) {
+    search.addEventListener('input',()=>{ assetQuery=search.value; const start=search.selectionStart; render(); const newSearch=document.querySelector('#asset-search'); newSearch?.focus(); newSearch?.setSelectionRange(start,start); });
+    if(searchTimer) clearTimeout(searchTimer);
+    searchTimer=setTimeout(searchOnline,250);
+  }
   document.querySelectorAll('[data-event-filter]').forEach(button=>button.addEventListener('click',()=>{ eventFilter=button.dataset.eventFilter; render(); }));
+  document.querySelectorAll('[data-crypto-view]').forEach(button=>button.addEventListener('click',()=>{ cryptoView=button.dataset.cryptoView; render(); }));
+  if(page==='asset' && asset(id)?.kind==='token') {
+    loadCryptoDetail();
+    liveTimer=setInterval(()=>{ if(!document.hidden) loadCryptoDetail(); },15000);
+  }
 }
 
 async function load() {

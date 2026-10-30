@@ -13,13 +13,34 @@ function respond(body, status = 200, contentType = 'application/json; charset=ut
 
 function json(data, status = 200) { return respond(JSON.stringify(data), status); }
 
+async function marketData(path, search, env) {
+  if (!env.MARKET_DATA_URL || !env.MARKET_DATA_CLIENT_ID || !env.MARKET_DATA_CLIENT_SECRET || !env.MARKET_DATA_ORIGIN_TOKEN) throw new Error('Market relay not configured');
+  const upstream = new URL(path + search, env.MARKET_DATA_URL);
+  const response = await fetch(upstream, { headers: {
+    'CF-Access-Client-Id': env.MARKET_DATA_CLIENT_ID,
+    'CF-Access-Client-Secret': env.MARKET_DATA_CLIENT_SECRET,
+    'X-Market-Origin-Token': env.MARKET_DATA_ORIGIN_TOKEN,
+    accept: 'application/json'
+  }, signal: AbortSignal.timeout(14_000) });
+  if (response.status === 404) return { status:404, body:await response.json() };
+  if (!response.ok) throw new Error(`Market relay HTTP ${response.status}`);
+  return { status:200, body:await response.json() };
+}
+
 async function readState(db) {
   // This pilot reads a deliberately bounded universe. Broader coverage needs pagination.
   const facts = (await db.prepare("SELECT * FROM financial_facts WHERE period_end >= '2018-01-01' ORDER BY period_end DESC, filed_at DESC LIMIT 750").all()).results;
   const bars = (await db.prepare("SELECT * FROM daily_bars WHERE day >= date('now','-120 day') ORDER BY day ASC LIMIT 500").all()).results;
   const events = (await db.prepare('SELECT * FROM filing_events ORDER BY filed_at DESC LIMIT 100').all()).results;
   const runs = (await db.prepare('SELECT * FROM source_runs ORDER BY started_at DESC LIMIT 60').all()).results;
-  const reports = (await db.prepare('SELECT id,title,description,published_at,as_of,source_count FROM reports ORDER BY published_at DESC LIMIT 100').all()).results;
+  const reports = (await db.prepare('SELECT id,title,description,published_at,as_of,source_count,stance FROM reports ORDER BY published_at DESC LIMIT 100').all()).results;
+  const reportIds = new Set(reports.map(r => r.id));
+  const reportAssets = (await db.prepare('SELECT report_id,market,symbol,asset_id FROM report_assets LIMIT 1000').all()).results.filter(r => reportIds.has(r.report_id));
+  const reportMarkets = (await db.prepare('SELECT report_id,market FROM report_markets LIMIT 1000').all()).results.filter(r => reportIds.has(r.report_id));
+  for (const report of reports) {
+    report.assets = reportAssets.filter(a => a.report_id === report.id);
+    report.markets = [...new Set([...reportMarkets.filter(m => m.report_id === report.id).map(m => m.market), ...report.assets.map(a => a.market)])];
+  }
   return { generatedAt: new Date().toISOString(), pilot: true, markets, assets: assets.map(({ cik, pair, ...publicAsset }) => publicAsset), facts, bars, events, runs, reports };
 }
 
@@ -86,6 +107,19 @@ export default {
     try {
       if (url.pathname === '/api/state') return json(await readState(env.DB));
       if (url.pathname === '/api/health') return json({ status: 'ok', at: new Date().toISOString() });
+      if (url.pathname === '/api/crypto/search') {
+        const q = url.searchParams.get('q') || '';
+        if (q.length > 20) return json({ error: 'Query too long' }, 400);
+        const result = await marketData('/search', `?q=${encodeURIComponent(q)}`, env);
+        return json(result.body, result.status);
+      }
+      if (url.pathname === '/api/crypto/detail') {
+        const symbol = url.searchParams.get('symbol') || '';
+        const view = url.searchParams.get('view') || 'daily';
+        if (!/^[A-Z0-9]{3,20}$/i.test(symbol) || !/^[a-zA-Z]{3,12}$/.test(view)) return json({ error:'Unsupported symbol or view' }, 404);
+        const result = await marketData('/detail', `?symbol=${encodeURIComponent(symbol)}&view=${encodeURIComponent(view)}`, env);
+        return json(result.body, result.status);
+      }
       if (url.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
       if (url.pathname.startsWith('/reports/')) {
         const slug = url.pathname.slice('/reports/'.length);
