@@ -10,7 +10,10 @@ if (!['127.0.0.1', '::1', 'localhost'].includes(host) && process.env.ALLOW_REMOT
 }
 const publicDir = path.resolve('public');
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.ttf': 'font/ttf' };
+  '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2' };
+const publicFiles = new Set(['index.html', 'app.css', 'app.js', 'sample.json', 'favicon.svg',
+  'fonts/IBMPlexSans-Regular.woff2', 'fonts/IBMPlexSans-Medium.woff2', 'fonts/IBMPlexSans-SemiBold.woff2',
+  'fonts/IBMPlexSans-Bold.woff2', 'fonts/IBMPlexMono-Regular.woff2']);
 
 const server = http.createServer(async (request, response) => {
   const pathname = new URL(request.url, 'http://localhost').pathname;
@@ -25,7 +28,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     const filename = pathname === '/' ? 'index.html' : pathname.slice(1);
-    if (!['index.html', 'app.css', 'app.js', 'sample.json', 'favicon.svg', 'Geist-Regular.ttf', 'Geist-Medium.ttf', 'Geist-SemiBold.ttf', 'Geist-Bold.ttf', 'GeistMono-Regular.ttf'].includes(filename)) { response.writeHead(404, headers).end(); return; }
+    if (!publicFiles.has(filename)) { response.writeHead(404, headers).end(); return; }
     const bytes = await fs.readFile(path.join(publicDir, filename));
     response.writeHead(200, { ...headers, 'content-type': mime[path.extname(filename)] }).end(bytes);
   } catch {
