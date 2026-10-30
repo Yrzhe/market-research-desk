@@ -5,6 +5,7 @@ An open-source, self-hosted research monitor for A shares, Hong Kong stocks, US 
 The repository contains program code and an explicitly labelled synthetic preview. It contains no personal portfolio, private research reports, actual market archive, API credentials, Telegram recipients, or server addresses.
 
 The [data availability and decision-system research](docs/research/2026-10-30-data-and-decision-system.md) checks company-level sources, ingestion rights, retention, and a VPS + Cloudflare architecture before any further dashboard layout work.
+The follow-up [decision workflow, historical storage, computation, and ChatGPT Sites study](docs/research/2026-10-30-decision-workflow-storage-and-sites.md) turns that inventory into a concrete data lifecycle and report-publishing recommendation.
 
 ## Interface preview
 
