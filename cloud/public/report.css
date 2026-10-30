@@ -7,3 +7,15 @@
 :root[data-theme=dark]{color-scheme:dark;--paper:#12211e;--ink:#e9f0e9;--muted:#b9c9bf;--line:#3b5148;--green:#83d6b2;--panel:#1e302a;--pale:#213a2e}:root[data-theme=dark] .lead{color:#d0e0d6}:root[data-theme=dark] .summary{background:#e5efe8;color:#172920}:root[data-theme=dark] .summary .label{color:#116c55}:root[data-theme=dark] .takeaway,:root[data-theme=dark] .flow .step{background:#1e302a}:root[data-theme=dark] .bar-track{background:#3c5147}
 
 .bar.daily{width:25%}.bar.fulltext{width:95%}
+.figure svg{display:block;width:100%;height:auto;margin-top:20px}
+@media(max-width:620px){.figure{overflow-x:auto}.figure svg{min-width:620px}.figure p{min-width:280px}}
+:root[data-theme=dark] .figure svg text[fill="#263b34"]{fill:#e9f0e9}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme=light]){color-scheme:dark;--paper:#12211e;--ink:#e9f0e9;--muted:#b9c9bf;--line:#3b5148;--green:#83d6b2;--panel:#1e302a;--pale:#213a2e}
+  :root:not([data-theme=light]) .lead{color:#d0e0d6}
+  :root:not([data-theme=light]) .summary{background:#e5efe8;color:#172920}
+  :root:not([data-theme=light]) .summary .label{color:#116c55}
+  :root:not([data-theme=light]) .takeaway,:root:not([data-theme=light]) .flow .step{background:#1e302a}
+  :root:not([data-theme=light]) .bar-track{background:#3c5147}
+  :root:not([data-theme=light]) .figure svg text[fill="#263b34"]{fill:#e9f0e9}
+}
