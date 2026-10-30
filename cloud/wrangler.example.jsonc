@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/wrangler.json",
+  "name": "market-research-desk",
+  "main": "./worker.js",
+  "compatibility_date": "2026-10-30",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "YOUR_PRIVATE_HOSTNAME", "custom_domain": true }],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "YOUR_D1_NAME",
+    "database_id": "YOUR_D1_ID"
+  }],
+  "r2_buckets": [{
+    "binding": "REPORTS",
+    "bucket_name": "YOUR_R2_BUCKET"
+  }],
+  "triggers": { "crons": ["30 9 * * 1-5", "30 0 * * *"] }
+}
