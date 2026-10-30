@@ -8,6 +8,8 @@ The repository contains program code and an explicitly labelled synthetic previe
 
 These screenshots use fictional, explicitly labelled sample data. The default installation starts empty.
 
+The current interface was refined from the [earlier desktop](docs/screenshots/baseline/overview-desktop-sample.jpg) and [phone](docs/screenshots/baseline/overview-mobile-sample.jpg) layouts. The [design notes](docs/architecture/market-research-desk-design-md.md) record the public reference screens, spacing and component decisions.
+
 | Desktop | Phone |
 | --- | --- |
 | ![Synthetic sample dashboard at desktop width](docs/screenshots/overview-desktop-sample.jpg) | ![Synthetic sample dashboard at phone width](docs/screenshots/overview-mobile-sample.jpg) |

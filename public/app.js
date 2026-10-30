@@ -34,7 +34,7 @@ function signed(value, unit = '') {
 function escAttr(value) { return escapeHtml(value); }
 function nav() { return ['overview', 'alerts', 'decisions', 'runs', 'about'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; }
 function pageHead(title, subtitle) {
-  return `<header class="page-head"><div><p class="eyebrow">四市场研究工作台 ${new URLSearchParams(location.search).has('sample') ? '<span class="sample-flag">合成示例数据</span>' : ''}</p><h1 class="page-title">${title}</h1><p class="page-subtitle">${subtitle}</p></div><div class="head-meta">看板读取时间<strong>${fullTime(state.generatedAt)}</strong></div></header>`;
+  return `<header class="page-head"><div><p class="eyebrow">四市场研究工作台 ${new URLSearchParams(location.search).has('sample') ? '<span class="sample-flag">合成示例数据</span>' : ''}</p><h1 class="page-title">${title}</h1><p class="page-subtitle">${subtitle}</p></div><div class="head-meta"><span>数据读取于</span><strong>${fullTime(state.generatedAt)}</strong></div></header>`;
 }
 function sectionHead(title, note, link = '') {
   return `<div class="section-head"><div><h2 class="section-title">${title}</h2><p class="section-note">${note}</p></div>${link}</div>`;
@@ -48,10 +48,10 @@ function overview() {
     const current = data.observations[0];
     const observation = data.observation;
     const stale = !current && observation;
-    return `<button class="market-cell" type="button" data-market="${escAttr(id)}" aria-label="查看${names[id]}证据">
-      <span class="market-top"><span class="status-mark ${escAttr(data.status)}"></span><span class="market-label">${names[id]}</span></span>
+    return `<button class="market-cell ${current ? '' : 'market-cell-empty'}" type="button" data-market="${escAttr(id)}" aria-label="查看${names[id]}证据">
+      <span class="market-top"><span class="market-label">${names[id]}</span><span class="market-state"><span class="status-mark ${escAttr(data.status)}"></span>${statusNames[data.status] || '无数据'}</span></span>
       <span class="market-value ${current ? '' : 'empty'}">${current ? number(current.value, current.unit) : '—'}</span>
-      <span class="market-caption">${current ? escapeHtml(current.label) : statusNames[data.status] || '无数据'}${stale ? ' · 上次有效值仅供历史查阅' : ''}</span>
+      <span class="market-caption">${current ? escapeHtml(current.label) : data.status === 'unconfigured' ? '尚未接入指标' : statusNames[data.status] || '无数据'}${stale ? ' · 上次有效值仅供历史查阅' : ''}</span>
       <span class="market-time">${current ? dateTime(current.asOf) : stale ? `上次 ${dateTime(observation.asOf)}` : '尚无有效观察'}</span>
     </button>`;
   }).join('');
@@ -59,27 +59,27 @@ function overview() {
   const alertRows = alerts.map(a => `<li><button class="data-row" type="button" data-alert="${escAttr(a.id)}"><span><span class="row-title">${escapeHtml(a.label)}</span><span class="row-sub">${names[a.market] || escapeHtml(a.market)} · 待核验 · ${escapeHtml(a.sourceId)}</span></span><span class="row-right"><span class="delta ${a.difference < 0 ? 'negative' : 'positive'}">${signed(a.percent, '%')}</span><span class="row-date">${dateTime(a.asOf)}</span></span></button></li>`).join('');
   const primaryAlert = alerts[0];
   const contextPoints = primaryAlert ? state.runs.map(r => r.observations?.find(o => o.sourceId === primaryAlert.sourceId && o.metricId === primaryAlert.metricId)).filter(Boolean).reverse() : [];
-  const alertContext = contextPoints.length >= 2 ? `<div class="trend-snippet"><div class="trend-caption"><strong>${escapeHtml(primaryAlert.label)} · 最近 ${contextPoints.length} 次观察</strong><span>变化的量级，点击提醒查看公式</span></div>${trendSvg(contextPoints)}</div>` : '';
+  const alertContext = contextPoints.length >= 2 ? `<div class="trend-snippet"><div class="trend-caption"><div><span class="trend-overline">最近变化</span><strong>${escapeHtml(primaryAlert.label)}</strong><span class="trend-current">本次 ${number(primaryAlert.after, primaryAlert.unit)} · ${dateTime(primaryAlert.asOf)}</span></div><strong class="trend-change ${primaryAlert.difference < 0 ? 'negative' : 'positive'}">${signed(primaryAlert.percent, '%')}</strong></div><div class="trend-context">最近 ${contextPoints.length} 次可比观察</div>${trendSvg(contextPoints, primaryAlert.unit)}<div class="trend-footer"><span>同一来源与指标的归档值</span><button class="text-button" type="button" data-alert="${escAttr(primaryAlert.id)}">查看计算与来源</button></div></div>` : '';
   const sourceRows = state.latest?.sources?.map(s => `<div class="health-item"><span class="source-name">${names[s.market] || escapeHtml(s.market)} <span class="row-sub">${escapeHtml(s.id)}</span></span><span class="source-state ${escAttr(s.status)}">${statusNames[s.status] || escapeHtml(s.status)}</span></div>`).join('') || '';
   const due = (state.decisions || []).filter(d => d.reviewAt && !d.verifiedAt && Date.parse(d.reviewAt) <= Date.parse(state.generatedAt));
   const dueRows = due.slice(0, 3).map(d => `<li><button class="data-row" type="button" data-decision="${escAttr(d.id)}"><span><span class="row-title">${escapeHtml(d.asset)}</span><span class="row-sub">${names[d.market]} · ${escapeHtml(d.verdict)} · 到期复核</span></span><span class="row-right"><span class="row-date">${dateTime(d.reviewAt)}</span></span></button></li>`).join('');
-  const dueSection = due.length ? `<section class="due-section">${sectionHead('到期复盘', `${due.length} 条旧判断需要用新事实核对`, '<a class="section-link" href="#decisions">判断台账</a>')}<div class="panel"><ul class="row-list">${dueRows}</ul></div></section>` : '';
+  const dueSection = `<section class="due-section">${sectionHead('到期复盘', due.length ? `${due.length} 条旧判断需要用新事实核对` : '旧判断的复核状态', '<a class="section-link" href="#decisions">判断台账</a>')}<div class="panel">${dueRows ? `<ul class="row-list">${dueRows}</ul>` : empty('目前没有到期判断', '新研究判断导入后，复核日期会在这里提示。')}</div></section>`;
   const matrix = marketEntries.map(([id, data]) => {
     const o = data.observations[0];
     return `<tr><td class="market-name">${names[id]}</td><td class="muted">${o ? escapeHtml(o.label) : statusNames[data.status] || '无数据'}</td><td class="number">${o ? number(o.value, o.unit) : '—'}</td><td class="muted">${o ? dateTime(o.asOf) : '—'}</td><td class="view-cell"><button class="text-button" type="button" data-market="${escAttr(id)}">查看证据</button></td></tr>`;
   }).join('');
   return pageHead('市场监测', '按各市场自己的数据时点查看变化。程序只生成观察与待核验事项，研究判断另行记录。') +
     `<section class="panel coverage-panel" aria-label="四市场覆盖"><div class="coverage-intro"><strong>本轮有效覆盖</strong><span class="coverage-count">${covered} / 4 个市场</span></div><div class="coverage-grid">${rail}</div></section>` +
-    `<div class="work-grid"><section>${sectionHead('需要核验', '达到配置阈值的事实变化，尚不是投资结论', '<a class="section-link" href="#alerts">查看全部</a>')}<div class="panel">${alerts.length ? `<ul class="row-list">${alertRows}</ul>${alertContext}` : empty('没有待核验提醒', '运行监控后，命中阈值且有可比历史值的变化会出现在这里。')}</div></section>` +
-    `<section>${sectionHead('自动运行', '最近一次监控的来源状态', '<a class="section-link" href="#runs">运行档案</a>')}<div class="panel">${sourceRows ? `<div class="panel-head"><span class="section-title">${dateTime(state.latest.startedAt)} · 运行 ${escapeHtml(state.latest.runId.slice(-6))}</span></div><div class="health-list">${sourceRows}</div>` : empty('等待首次运行', '用配置文件接入来源，并在服务器执行监控命令。')}</div></section></div>` +
-    `${dueSection}<section>${sectionHead('市场截面', '数值、单位与观察时间来自最近一轮有效记录')}<div class="panel matrix-panel"><div class="table-wrap"><table class="matrix"><thead><tr><th>市场</th><th>观察指标</th><th>最新值</th><th>观察时间</th><th></th></tr></thead><tbody>${matrix}</tbody></table></div></div><div class="below-note"><span><i class="line-mark"></i> 有效覆盖</span><span>失效来源不沿用旧值触发提醒</span><span>点击市场查看历史与来源</span></div></section>`;
+    `<div class="work-grid"><section>${sectionHead('需要核验', '达到配置阈值的事实变化，尚不是投资结论', '<a class="section-link" href="#alerts">查看全部</a>')}<div class="panel signal-panel">${alerts.length ? `${alertContext}<div class="signal-list-head"><strong>变化队列</strong><span>${alerts.length} 条待核验</span></div><ul class="row-list">${alertRows}</ul>` : empty('没有待核验提醒', '运行监控后，命中阈值且有可比历史值的变化会出现在这里。')}</div></section>` +
+    `<div class="work-side"><section>${sectionHead('自动运行', '最近一次监控的来源状态', '<a class="section-link" href="#runs">运行档案</a>')}<div class="panel">${sourceRows ? `<div class="panel-head"><span class="section-title">${dateTime(state.latest.startedAt)} · 运行 ${escapeHtml(state.latest.runId.slice(-6))}</span></div><div class="health-list">${sourceRows}</div>` : empty('等待首次运行', '用配置文件接入来源，并在服务器执行监控命令。')}</div></section>${dueSection}</div></div>` +
+    `<section>${sectionHead('市场截面', '数值、单位与观察时间来自最近一轮有效记录')}<div class="panel matrix-panel"><div class="table-wrap"><table class="matrix"><thead><tr><th>市场</th><th>观察指标</th><th>最新值</th><th>观察时间</th><th></th></tr></thead><tbody>${matrix}</tbody></table></div></div><div class="below-note"><span><i class="line-mark"></i> 有效覆盖</span><span>失效来源不沿用旧值触发提醒</span><span>点击市场查看历史与来源</span></div></section>`;
 }
 
 function decisionsPage() {
   const items = state.decisions || [];
   const due = items.filter(d => d.reviewAt && !d.verifiedAt && Date.parse(d.reviewAt) <= Date.parse(state.generatedAt));
   const selected = due[0] || items[0];
-  const rows = items.map(d => `<li><button class="data-row" type="button" data-decision="${escAttr(d.id)}"><span><span class="row-title">${escapeHtml(d.asset)}</span><span class="row-sub">${names[d.market]} · ${escapeHtml(d.verdict)} · ${dateTime(d.asOf)}</span></span><span class="row-right"><span class="delta ${d.reviewAt && !d.verifiedAt && Date.parse(d.reviewAt) <= Date.parse(state.generatedAt) ? 'negative' : ''}">${d.verifiedAt ? '已复核' : d.reviewAt ? '待复核' : '未设复核日'}</span><span class="row-date">${d.reviewAt ? dateTime(d.reviewAt) : '—'}</span></span></button></li>`).join('');
+  const rows = items.map(d => `<li><button class="data-row" type="button" data-decision="${escAttr(d.id)}"><span><span class="row-title">${escapeHtml(d.asset)}</span><span class="row-sub">${names[d.market]} · ${escapeHtml(d.verdict)}</span></span><span class="row-right"><span class="delta ${d.reviewAt && !d.verifiedAt && Date.parse(d.reviewAt) <= Date.parse(state.generatedAt) ? 'negative' : ''}">${d.verifiedAt ? '已复核' : d.reviewAt ? '待复核' : '未设复核日'}</span><span class="row-date">${d.reviewAt ? dateTime(d.reviewAt) : '—'}</span></span></button></li>`).join('');
   const preview = selected ? `<div class="decision-preview"><div class="decision-preview-top"><span>${names[selected.market]} · ${dateTime(selected.asOf)}</span><strong>${escapeHtml(selected.verdict)}</strong></div><h3>${escapeHtml(selected.asset)}</h3><div class="decision-fact"><span>核心依据</span><p>${escapeHtml(selected.thesis || '未提供')}</p></div><div class="decision-fact"><span>最强反证</span><p>${escapeHtml(selected.counterEvidence || '未提供')}</p></div><div class="decision-preview-foot"><span>复核 ${selected.reviewAt ? dateTime(selected.reviewAt) : '未设定'}</span><button class="text-button" type="button" data-decision="${escAttr(selected.id)}">查看完整判断</button></div></div>`
     : empty('等待研究流程接入', '把监控提醒交给研究流程核对，再由私有台账导出有依据、有反证和复核日的判断。');
   return pageHead('判断台账', '研究流程写入的判断在这里只读展示。阈值提醒不会自动生成投资结论。') +
@@ -145,12 +145,23 @@ function runDetail(id) {
     `<section class="detail-section"><h3>来源状态</h3><div>${sourceRows}</div></section>` +
     `<section class="detail-section"><h3>本轮观察</h3>${observationRows || '<p class="section-note">此轮无有效观察，或详细记录已超过看板索引范围。</p>'}</section>`);
 }
-function trendSvg(points) {
+function trendSvg(points, unit = '') {
   if (points.length < 2) return '<p class="section-note">至少两次可比观察后显示趋势。</p>';
   const values = points.map(p => p.value), min = Math.min(...values), max = Math.max(...values);
-  const span = max - min || 1;
-  const plot = points.map((p, i) => `${(i / (points.length - 1) * 430 + 40).toFixed(1)},${(145 - (p.value - min) / span * 105).toFixed(1)}`).join(' ');
-  return `<svg class="chart" viewBox="0 0 500 180" role="img" aria-label="${points.length} 次观察的趋势图"><line class="gridline" x1="40" x2="470" y1="40" y2="40"/><line class="gridline" x1="40" x2="470" y1="92" y2="92"/><line class="gridline" x1="40" x2="470" y1="145" y2="145"/><text x="0" y="44">${escapeHtml(number(max))}</text><text x="0" y="149">${escapeHtml(number(min))}</text><polyline class="series" points="${plot}"/></svg>`;
+  const span = max - min || Math.max(Math.abs(max) * .02, 1);
+  const upper = max + span * .16, lower = min - span * .16;
+  const draw = (width, left, bottom, compact) => {
+    const right = width - 16, top = 20;
+    const y = value => bottom - (value - lower) / (upper - lower) * (bottom - top);
+    const x = i => i / (points.length - 1) * (right - left) + left;
+    const plot = points.map((p, i) => `${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+    const ticks = [upper, (upper + lower) / 2, lower].map(value => `<line class="gridline" x1="${left}" x2="${right}" y1="${y(value).toFixed(1)}" y2="${y(value).toFixed(1)}"/><text class="axis-label" x="2" y="${(y(value) + 4).toFixed(1)}">${compact ? number(value) : number(value, unit)}</text>`).join('');
+    const dateLabel = value => compact ? new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(new Date(value)) : dateTime(value);
+    const dates = [0, points.length - 1].map(i => `<text class="axis-date" x="${x(i).toFixed(1)}" y="${bottom + 27}" text-anchor="${i === 0 ? 'start' : 'end'}">${escapeHtml(dateLabel(points[i].asOf))}</text>`).join('');
+    const dots = points.map((p, i) => `<circle class="chart-dot" cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5"/>`).join('');
+    return `<svg class="chart ${compact ? 'chart-mobile' : 'chart-desktop'}" viewBox="0 0 ${width} ${bottom + 40}" role="img" aria-label="${points.length} 次观察的趋势图，范围 ${number(min, unit)} 至 ${number(max, unit)}">${ticks}<polyline class="series" points="${plot}"/>${dots}${dates}</svg>`;
+  };
+  return draw(620, 72, 170, false) + draw(340, 48, 150, true);
 }
 function marketDetail(id) {
   const data = state.markets[id];
@@ -162,7 +173,7 @@ function marketDetail(id) {
   const link = safeUrl(source?.sourceUrl);
   openDetail(detailHead(names[id], '市场证据') +
     `<div class="detail-measure"><div><span>本轮状态</span><strong class="status-value">${statusNames[data.status] || '无数据'}</strong></div><div><span>最新有效值</span><strong>${current ? number(current.value, current.unit) : '—'}</strong></div></div>` +
-    `<section class="detail-section"><h3>指标趋势</h3>${trendSvg(points)}<p class="section-note">同一来源、同一指标的已归档观察；无可比记录时不绘制趋势。</p></section>` +
+    `<section class="detail-section"><h3>指标趋势</h3>${trendSvg(points, current?.unit || '')}<p class="section-note">同一来源、同一指标的已归档观察；无可比记录时不绘制趋势。</p></section>` +
     `<section class="detail-section"><h3>来源与时间</h3><dl class="fact-list"><dt>指标</dt><dd>${current ? escapeHtml(current.label) : '未接入或本轮无有效值'}</dd><dt>观察时间</dt><dd>${current ? fullTime(current.asOf) : '—'}</dd><dt>采集时间</dt><dd>${current ? fullTime(current.fetchedAt) : '—'}</dd><dt>来源</dt><dd>${source ? escapeHtml(source.id) : '—'}</dd><dt>来源网址</dt><dd>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.sourceUrl)}</a>` : '未提供公开网址'}</dd></dl></section>`);
 }
 
