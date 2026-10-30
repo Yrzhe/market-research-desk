@@ -1,0 +1,21 @@
+[Unit]
+Description=Finance Research Binance market data relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=marketdesk
+Group=marketdesk
+WorkingDirectory=/opt/market-research-desk/repo
+EnvironmentFile=/opt/market-research-desk/private/market-api.env
+ExecStart=/usr/bin/node vps/market-api.mjs
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

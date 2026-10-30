@@ -1,0 +1,14 @@
+{
+  "id": "example-company-note-2026-10-31",
+  "title": "Example company note",
+  "description": "One sentence describing the report scope",
+  "publishedAt": "2026-10-31T00:00:00Z",
+  "asOf": "2026-10-30",
+  "sourceCount": 3,
+  "stance": "unrated",
+  "markets": ["us", "crypto"],
+  "assets": [
+    { "market": "us", "symbol": "KO", "assetId": "ko" },
+    { "market": "crypto", "symbol": "BTCUSDT", "assetId": "btc" }
+  ]
+}

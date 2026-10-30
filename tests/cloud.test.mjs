@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { collectCompany, collectCrypto } from '../cloud/sources.js';
+import { searchSpot, spotDetail } from '../cloud/market.js';
 
 const capturedAt = '2026-10-30T16:00:00Z';
 
@@ -35,4 +36,34 @@ test('crypto collector only stores completed finite daily candles', async () => 
   const result = await collectCrypto({ id: 'btc', pair: 'BTCUSDT' }, mockFetch, capturedAt);
   assert.deepEqual(result.bars.map(row => [row.day, row.close, row.quoteUnit]), [['2026-10-29', 11, 'USDT']]);
   assert.equal(result.bars[0].capturedAt, capturedAt);
+});
+
+test('spot search and detail use only active USDT pairs, preserve view and UTC close semantics', async () => {
+  const now = Date.now();
+  const todayStart = Math.floor(now / 86_400_000) * 86_400_000;
+  const yesterday = todayStart - 86_400_000;
+  const mockFetch = async url => {
+    let payload;
+    if (url.includes('/exchangeInfo')) payload = { symbols: [
+      { symbol:'TESTUSDT', baseAsset:'TEST', quoteAsset:'USDT', status:'TRADING' },
+      { symbol:'TESTBTC', baseAsset:'TEST', quoteAsset:'BTC', status:'TRADING' },
+      { symbol:'OLDUSDT', baseAsset:'OLD', quoteAsset:'USDT', status:'BREAK' }
+    ] };
+    else if (url.includes('/ticker/24hr')) payload = { lastPrice:'11', openPrice:'10', highPrice:'12', lowPrice:'9', volume:'100', quoteVolume:'1100', priceChangePercent:'10', count:50 };
+    else if (url.includes('interval=1d')) payload = [
+      [yesterday,'9','11','8','10','100',yesterday+86_400_000-1,'1000',40,'50','500'],
+      [todayStart,'10','12','9','11','120',todayStart+86_400_000-1,'1200',50,'60','600']
+    ];
+    else if (url.includes('interval=1s')) payload = [[now-1000,'10','11','9','11','5',now+1000,'50',5,'3','30']];
+    else throw new Error(url);
+    return new Response(JSON.stringify(payload), { status:200 });
+  };
+  assert.deepEqual((await searchSpot('test', mockFetch)).map(s => s.symbol), ['TESTUSDT']);
+  assert.equal(await spotDetail('OLDUSDT','daily',mockFetch), null);
+  const detail = await spotDetail('TESTUSDT','second',mockFetch);
+  assert.equal(detail.interval, '1s');
+  assert.equal(detail.dayOpen, 10);
+  assert.equal(detail.previousClose, 10);
+  assert.equal(detail.rows[0].closed, false);
+  assert.equal(detail.rows[0].takerBuyQuote, 30);
 });
