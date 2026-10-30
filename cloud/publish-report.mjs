@@ -6,11 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const [manifestPath, htmlPath, database, bucket, config = 'cloud/wrangler.jsonc'] = process.argv.slice(2);
+const [manifestPath, htmlPath, database, bucket, config = 'cloud/wrangler.jsonc', mode = '--remote'] = process.argv.slice(2);
 if (![manifestPath, htmlPath, database, bucket].every(Boolean)) {
-  console.error('Usage: node cloud/publish-report.mjs MANIFEST.json REPORT.html D1_DATABASE R2_BUCKET [WRANGLER_CONFIG]');
+  console.error('Usage: node cloud/publish-report.mjs MANIFEST.json REPORT.html D1_DATABASE R2_BUCKET [WRANGLER_CONFIG] [--remote|--local]');
   process.exit(2);
 }
+if (!['--remote','--local'].includes(mode)) throw new Error('Mode must be --remote or --local');
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 const html = await readFile(htmlPath);
 const markets = new Set(['a-share','hong-kong','us','crypto']);
@@ -36,7 +37,7 @@ function run(args) {
   if (result.status !== 0) throw new Error(`wrangler failed: ${args.slice(0,3).join(' ')}`);
 }
 try {
-  run(['r2','object','put',`${bucket}/${artifactKey}`,'--file',htmlPath,'--remote','--content-type','text/html; charset=utf-8','--config',config]);
-  run(['d1','execute',database,'--remote','--file',sqlPath,'--config',config,'--yes']);
+  run(['r2','object','put',`${bucket}/${artifactKey}`,'--file',htmlPath,mode,'--content-type','text/html; charset=utf-8','--config',config]);
+  run(['d1','execute',database,mode,'--file',sqlPath,'--config',config,'--yes']);
   console.log(`Published /reports/${manifest.id} with ${manifest.assets.length} instrument links`);
 } finally { await unlink(sqlPath).catch(()=>{}); }
