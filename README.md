@@ -8,7 +8,7 @@ The repository contains program code and an explicitly labelled synthetic previe
 
 These screenshots use fictional, explicitly labelled sample data. The default installation starts empty.
 
-The current interface was refined from the [earlier desktop](docs/screenshots/baseline/overview-desktop-sample.jpg) and [phone](docs/screenshots/baseline/overview-mobile-sample.jpg) layouts. The [design notes](docs/architecture/market-research-desk-design-md.md) record the public reference screens, spacing and component decisions.
+The current interface was refined from the [first desktop layout](docs/screenshots/baseline/overview-desktop-sample.jpg) and the [immediately preceding version](docs/design/baseline/2026-10-30-second-pass/overview-desktop-sample.jpg). The [design notes](docs/architecture/market-research-desk-design-md.md) record the public references and the changes in hierarchy, type, and components. [Dark desktop](docs/screenshots/overview-desktop-dark-sample.jpg) and [dark phone](docs/screenshots/overview-mobile-dark-sample.jpg) previews are also available.
 
 | Desktop | Phone |
 | --- | --- |

@@ -20,7 +20,7 @@ Surface: app screen. The overview answers: **What changed since the last valid o
 
 ## Direction and reference lock
 
-Taste-skill `achromatic-ledger`, seed `1152222347`, drawn 2026-10-30, finance app screen. The first implementation was too sparse: large all-purpose cards made coverage, alerts, evidence and run health feel equally important; the top navigation and blue-grey canvas read like a generic admin template. The revision keeps the product's neutral daylight palette, Geist, factual scope and five destinations, but makes the four-market strip, change chart and investigation queue a coherent work surface. No decorative imagery.
+The first pass used taste-skill `achromatic-ledger`, seed `1152222347`. Its screenshot was still a generic light admin: separate white panels gave the market data, evidence and operations equal visual weight. The second pass uses the `framed-sheet` app direction, seed `519901950`, while keeping the factual scope and five destinations. A neutral rail frames one work sheet. The four-market tape stays quiet; the current investigation is the one dark, high-contrast data surface. This gives the screen a clear place to start without decorative imagery or invented market data.
 
 ### Reference study, 2026-10-30
 
@@ -33,20 +33,20 @@ Taste-skill `achromatic-ledger`, seed `1152222347`, drawn 2026-10-30, finance ap
 
 The references are craft sources, not data sources. The code keeps the product's existing public data contract, so no reference-specific figures, market labels, customer marks or inferred trading signals are imported.
 
-The three studied screenshots and the specific takeaways are together on the [Paper reference board](https://app.paper.design/file/01M65RBRHHPCBATBN9YE47PT12/p-1-0). The earlier desktop and phone screenshots are retained in `docs/screenshots/baseline/`; the current captures replace the preview images in `docs/screenshots/`.
+The studied screenshots and specific takeaways are together on the [Paper reference board](https://app.paper.design/file/01M65RBRHHPCBATBN9YE47PT12/p-1-0). The original baseline is in `docs/screenshots/baseline/`; the first-pass design that prompted this second revision is in `docs/design/baseline/2026-10-30-second-pass/`. Current light and dark captures are in `docs/screenshots/`.
 
-Tokens: ground `#f7f8fa`; surface `#ffffff`; text `#151c24`; muted `#607080`; quiet text `#5c6976`; border `#e2e7ec`; data blue `#245eaf`; warning `#8b5b15`; negative `#aa343b`; positive `#19704a`; card radius `10px`; control radius `7px`; row `56px`; body `14px`; label `12px`; title `30px`; tabular figures `24px`. Fonts: Geist for interface, Geist Mono only for IDs and keys; system fallbacks. Desktop rail `216px`, content width up to `1320px`, phone margin `16px`. Motion is feedback only, under `180ms`, with reduced-motion fallback.
+Second-pass tokens: ground `#f3f5f5`; sheet `#fdfefe`; ink `#17232b`; muted `#52636e`; border `#dce3e6`; data blue `#245eaf`; investigation field `#172a38`; warning `#8b5b15`; negative `#aa343b`; positive `#19704a`. The desktop rail is `210px`; sheet and bottom edge share one border. The market tape has four equal cells, while the investigation and operations grid is approximately 2:1. Body text is `14px`, labels `12–13px`, title `27px`, figures `21–26px`; phone outer margin is `16px`. IBM Plex Sans is self-hosted for interface and figures, and IBM Plex Mono is used only for code. The font files and their SIL Open Font License are in `public/fonts/`. Motion is feedback only, under `180ms`, with reduced-motion fallback.
 
 The data accent marks actual coverage and the current time series. Status colors are limited to small text and markers. This keeps the finance display legible without confusing price direction with evidence quality. Light mode is the primary design; dark mode follows the same hierarchy.
 
-The visual inspector reports `no-data-hue` on the judgment page even though that page contains no chart. The judgment's due count uses the blue data accent; a fabricated chart would make the evidence less clear.
+The evidence panel joins the current comparison, its time series, and the change queue. Previous and current readings, absolute change, percentage change, unit, source, and observation time derive from the same alert object. The chart has one blue line, three y ticks and a final-point guide. On the decision page, a single record spans the available width; a list/detail split returns when there are multiple records. The judgment page has no chart, so a chart-specific `no-data-hue` warning there would be a false positive.
 
 ### Component and interaction recipe
 
 - The desktop shell is a flat navigation rail with a simple wordmark. Phone navigation becomes a scrollable strip. Every destination keeps its existing URL hash.
 - Coverage is one four-column strip, not four isolated cards. Each cell has market, explicit source state, primary measurement, unit, metric name and observed time. Failed or unconfigured cells do not reuse a stale figure.
 - The alert workspace pairs the most recent comparable trend with the alert queue. A line carries an actual y-scale and observation time labels. The row and chart open the same evidence drawer; no hidden trading conclusion is implied.
-- The run-health list and due-review list share a right column. They can be shorter than the chart because their height reflects the actual count; blank filler would make operational data look more substantial than it is.
+- The run-health list and due-review list share the operations rail next to the investigation. Their item counts and spacing reflect the actual data.
 - Tables use right-aligned tabular figures, a distinct column header and row hover. Source status stays in a separate operations pane. Empty, stale and failed states retain their own copy.
 - The detail drawer uses a single metric hierarchy, measured time, formula and source URL. Focus returns to its trigger on close.
 - Hover, focus and pressed feedback are short and quiet. Reduced-motion users receive the final state without animation.
